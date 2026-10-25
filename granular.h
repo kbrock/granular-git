@@ -8,6 +8,10 @@
 /* Parent of pid, or -1 on error. */
 int granular_parent_pid(int pid);
 
+/* Start time of pid as "seconds.microseconds" from a static buffer, or "" if there is no such
+ * process. A reused pid has a different start time. */
+const char *granular_pid_start(int pid);
+
 /* Executable path of pid from a static buffer, or "" if unreadable. */
 const char *granular_pid_path(int pid);
 
@@ -43,6 +47,19 @@ int granular_listen(const char *path);   /* removes a stale socket, mode 0600 */
 int granular_connect(const char *path);
 int granular_accept(int listen_fd);
 int granular_close(int fd);
+
+/* granular_accept, or -2 after a line was read from stdin. Once stdin reaches EOF it is no longer
+ * watched. */
+int granular_accept_or_enter(int listen_fd);
+
+/* The line that granular_accept_or_enter last read from stdin, without its newline. */
+const char *granular_last_line(void);
+
+/* Pids of all running claude executables, separated by spaces, from a static buffer. */
+const char *granular_claude_pids(void);
+
+/* Working directory of pid from a static buffer, or "" if unreadable. */
+const char *granular_pid_cwd(int pid);
 
 /* Runs the next executable called name on PATH that is not a copy of this program, with env_name set to
  * value (an empty value removes it) and this program's original arguments. Returns -1 if none

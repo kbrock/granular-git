@@ -2,6 +2,7 @@
 #include <crt_externs.h>
 #include <errno.h>
 #include <limits.h>
+#include <poll.h>
 #include <stdlib.h>
 #include <string.h>
 #include <libproc.h>
@@ -36,6 +37,64 @@ int granular_parent_pid(int pid)
 	if (sysctl(mib, 4, &kp, &size, NULL, 0) || size == 0)
 		return -1;
 	return kp.kp_eproc.e_ppid;
+}
+
+const char *granular_pid_start(int pid)
+{
+	static char buf[40];
+	struct kinfo_proc kp;
+	size_t size = sizeof(kp);
+	int mib[4] = { CTL_KERN, KERN_PROC, KERN_PROC_PID, pid };
+
+	buf[0] = '\0';
+	if (!sysctl(mib, 4, &kp, &size, NULL, 0) && size > 0)
+		snprintf(buf, sizeof(buf), "%ld.%06d", (long)kp.kp_proc.p_starttime.tv_sec,
+			 (int)kp.kp_proc.p_starttime.tv_usec);
+	return buf;
+}
+
+const char *granular_pid_cwd(int pid)
+{
+	static char buf[PATH_MAX];
+	struct proc_vnodepathinfo vpi;
+
+	buf[0] = '\0';
+	if (proc_pidinfo(pid, PROC_PIDVNODEPATHINFO, 0, &vpi, sizeof(vpi)) == (int)sizeof(vpi))
+		snprintf(buf, sizeof(buf), "%s", vpi.pvi_cdir.vip_path);
+	return buf;
+}
+
+const char *granular_claude_pids(void)
+{
+	static char buf[256];
+	int mib[3] = { CTL_KERN, KERN_PROC, KERN_PROC_ALL };
+	size_t size = 0, used = 0;
+	struct kinfo_proc *procs;
+
+	buf[0] = '\0';
+	if (sysctl(mib, 3, NULL, &size, NULL, 0))
+		return buf;
+	size += size / 8;
+	procs = malloc(size);
+	if (!procs)
+		return buf;
+	if (!sysctl(mib, 3, procs, &size, NULL, 0)) {
+		for (size_t i = 0; i < size / sizeof(*procs); i++) {
+			int pid = procs[i].kp_proc.p_pid;
+			char path[PROC_PIDPATHINFO_MAXSIZE];
+			char num[16];
+
+			if (proc_pidpath(pid, path, sizeof(path)) <= 0 || !is_claude_path(path))
+				continue;
+			snprintf(num, sizeof(num), "%d ", pid);
+			if (used + strlen(num) < sizeof(buf)) {
+				strcpy(buf + used, num);
+				used += strlen(num);
+			}
+		}
+	}
+	free(procs);
+	return buf;
 }
 
 const char *granular_pid_path(int pid)
@@ -266,6 +325,36 @@ int granular_accept(int listen_fd)
 	if (fd >= 0)
 		sock_opts(fd, 2);
 	return fd;
+}
+
+static char enter_line[64];
+
+const char *granular_last_line(void)
+{
+	return enter_line;
+}
+
+int granular_accept_or_enter(int listen_fd)
+{
+	static int stdin_open = 1;
+	struct pollfd fds[2] = { { listen_fd, POLLIN, 0 }, { STDIN_FILENO, POLLIN, 0 } };
+
+	if (poll(fds, stdin_open ? 2 : 1, -1) < 0)
+		return -1;
+	if (stdin_open && (fds[1].revents & (POLLIN | POLLHUP))) {
+		size_t len = 0;
+		char c;
+		ssize_t n;
+
+		while ((n = read(STDIN_FILENO, &c, 1)) == 1 && c != '\n')
+			if (len < sizeof(enter_line) - 1)
+				enter_line[len++] = c;
+		enter_line[len] = '\0';
+		if (n <= 0)
+			stdin_open = 0;
+		return -2;
+	}
+	return granular_accept(listen_fd);
 }
 
 int granular_peer_pid(int fd)
