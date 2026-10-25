@@ -315,13 +315,17 @@ int granular_exec_other(const char *name, const char *env_name, const char *valu
 	char *dup;
 	char *dir;
 	char *save = NULL;
+	const char *self_name;
 
 	if (!path || proc_pidpath(getpid(), self, sizeof(self)) <= 0 || !realpath(self, real_self))
 		return -1;
+	self_name = strrchr(real_self, '/');
 	dup = strdup(path);
 	for (dir = strtok_r(dup, ":", &save); dir; dir = strtok_r(NULL, ":", &save)) {
 		snprintf(cand, sizeof(cand), "%s/%s", dir, name);
-		if (access(cand, X_OK) || !realpath(cand, real_cand) || !strcmp(real_cand, real_self))
+		/* Another copy of this program (build/ and an install) would exec back and forth. */
+		if (access(cand, X_OK) || !realpath(cand, real_cand) ||
+		    !strcmp(strrchr(real_cand, '/'), self_name))
 			continue;
 		if (*value)
 			setenv(env_name, value, 1);

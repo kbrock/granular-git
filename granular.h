@@ -44,7 +44,7 @@ int granular_connect(const char *path);
 int granular_accept(int listen_fd);
 int granular_close(int fd);
 
-/* Runs the next executable called name on PATH that is not this program, with env_name set to
+/* Runs the next executable called name on PATH that is not a copy of this program, with env_name set to
  * value (an empty value removes it) and this program's original arguments. Returns -1 if none
  * could be run. */
 int granular_exec_other(const char *name, const char *env_name, const char *value);
