@@ -1,10 +1,6 @@
 #ifndef GRANULAR_H
 #define GRANULAR_H
 
-/* Keychain service name is GRANULAR_PREFIX + profile + ":" + host, e.g. "granular:ro:github.com".
- * Account is the username and the secret is the token. The profile is "ro" or "rw". */
-#define GRANULAR_PREFIX "granular:"
-
 /* Parent of pid, or -1 on error. */
 int granular_parent_pid(int pid);
 
@@ -14,21 +10,6 @@ const char *granular_pid_start(int pid);
 
 /* Executable path of pid from a static buffer, or "" if unreadable. */
 const char *granular_pid_path(int pid);
-
-/* 1 if the claude-code executable is an ancestor of pid, 0 if not, -1 on error.
- * A nonzero verbose prints the walk to stderr. */
-int granular_is_claude(int pid, int verbose);
-
-/* Hard-coded for 1A: "rw" only when is_claude is 0; Claude or an error gets "ro". */
-const char *granular_account(int is_claude);
-
-/* Copies the stored secret into buf (NUL-terminated). Returns its length,
- * or -1 if the item is missing or the read fails. */
-int granular_kc_get(const char *service, const char *account, char *buf, int len);
-
-/* granular_kc_get for callers that cannot pass a buffer (Spinel). Returns the
- * secret from a static buffer, or "" if the item is missing. */
-const char *granular_kc_token(const char *service, const char *account);
 
 /* The first item of service, narrowed to account if account is not empty, as "<account> <secret>"
  * from a static buffer, or "" if there is none or the account holds a space. */

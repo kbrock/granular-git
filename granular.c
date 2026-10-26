@@ -16,10 +16,6 @@
 #include <Security/Security.h>
 #include "granular.h"
 
-#define MAX_DEPTH 64
-
-#define vlog(v, ...) do { if (v) fprintf(stderr, __VA_ARGS__); } while (0)
-
 static int is_claude_path(const char *path)
 {
 	const char *base = strrchr(path, '/');
@@ -106,31 +102,6 @@ const char *granular_pid_path(int pid)
 	return buf;
 }
 
-int granular_is_claude(int pid, int verbose)
-{
-	for (int depth = 0; pid > 1 && depth < MAX_DEPTH; depth++) {
-		char path[PROC_PIDPATHINFO_MAXSIZE];
-		int have_path = proc_pidpath(pid, path, sizeof(path)) > 0;
-
-		vlog(verbose, "walk pid=%d path=%s\n", pid, have_path ? path : "(none)");
-		if (have_path && is_claude_path(path))
-			return 1;
-		pid = granular_parent_pid(pid);
-		if (pid < 0) {
-			vlog(verbose, "walk parent lookup failed\n");
-			return -1;
-		}
-	}
-	if (pid != 1)
-		vlog(verbose, "walk ended at pid=%d\n", pid);
-	return pid == 1 ? 0 : -1;
-}
-
-const char *granular_account(int is_claude)
-{
-	return is_claude == 0 ? "rw" : "ro";
-}
-
 static CFMutableDictionaryRef new_dictionary(void)
 {
 	return CFDictionaryCreateMutable(kCFAllocatorDefault, 0,
@@ -155,28 +126,6 @@ static CFMutableDictionaryRef item_query(const char *service, const char *accoun
 	return q;
 }
 
-int granular_kc_get(const char *service, const char *account, char *buf, int len)
-{
-	CFMutableDictionaryRef q = item_query(service, account);
-	CFDataRef data = NULL;
-	int n = -1;
-
-	CFDictionarySetValue(q, kSecReturnData, kCFBooleanTrue);
-	CFDictionarySetValue(q, kSecMatchLimit, kSecMatchLimitOne);
-	if (SecItemCopyMatching(q, (CFTypeRef *)&data) == errSecSuccess) {
-		CFIndex dlen = CFDataGetLength(data);
-
-		if (dlen < len) {
-			memcpy(buf, CFDataGetBytePtr(data), dlen);
-			buf[dlen] = '\0';
-			n = (int)dlen;
-		}
-		CFRelease(data);
-	}
-	CFRelease(q);
-	return n;
-}
-
 int granular_kc_set(const char *service, const char *account, const char *secret)
 {
 	CFMutableDictionaryRef q = item_query(service, account);
@@ -197,15 +146,6 @@ int granular_kc_set(const char *service, const char *account, const char *secret
 	CFRelease(attrs);
 	CFRelease(q);
 	return st == errSecSuccess ? 0 : -1;
-}
-
-const char *granular_kc_token(const char *service, const char *account)
-{
-	static char buf[512];
-
-	if (granular_kc_get(service, account, buf, sizeof(buf)) < 0)
-		buf[0] = '\0';
-	return buf;
 }
 
 const char *granular_kc_login(const char *service, const char *account)

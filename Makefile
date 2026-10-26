@@ -1,13 +1,7 @@
-CFLAGS  = -Wall -Wextra
-LDFLAGS = -framework Security -framework CoreFoundation
-PROGS   = granular-git granular-passwd
+CFLAGS = -Wall -Wextra
+BUILD  = build
 
-all: $(PROGS)
-
-$(PROGS): %: %.c granular.c granular.h
-	$(CC) $(CFLAGS) $< granular.c $(LDFLAGS) -o $@
-
-BUILD = build
+all: link
 
 link: $(BUILD)/granular
 	ln -sf granular $(BUILD)/granular-git
@@ -35,6 +29,6 @@ uninstall:
 		rm -f $(PREFIX)/granular
 
 clean:
-	rm -rf $(PROGS) $(BUILD)
+	rm -rf $(BUILD)
 
 .PHONY: all link install uninstall clean
