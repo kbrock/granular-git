@@ -48,7 +48,7 @@ Spinel (Ruby ahead-of-time compiler that produces a standalone native binary by 
 
 A request walks up from the caller. The first process with a profile of its own decides, else the default applies:
 1. A process row: pid plus start time (the start time tells a reused pid apart). The slots are the process rows. Flipping a slot sets its row.
-2. An app row: the executable's path. The `claude` CLI and `Claude.app` paths get the profile.
+2. An app row: the executable's file name. `claude` (the CLI) and `Claude` (`Claude.app`) get the profile.
 3. The default row.
 
 Seeded rows: the `claude` CLI and `Claude.app` map to `ro`. Default maps to `rw`. A chain that does not reach launchd gets `ro`. The table lives in the daemon's memory only; a daemon restart returns it to the seed.
