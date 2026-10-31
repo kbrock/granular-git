@@ -26,6 +26,12 @@ A central daemon listens on a Unix domain socket. Callers connect and ask "can I
 
 Spinel (Ruby ahead-of-time compiler that produces a standalone native binary by way of C), calling the Security framework (`SecItemCopyMatching`, `kSecClassGenericPassword`) and libproc through the C shim.
 
+### Design constraints
+
+- The C interface is minimal. A function is in C only when Spinel cannot do the work. Everything else is Ruby.
+- The system assumes a well-behaved environment. Claude can skip an instruction. It does not attack the machine, so there is no lock-down mode.
+- Profiles are user defined and have no order. Out of the box `claude` gets `ro` and every other caller gets `rw`.
+
 ### Caller identification
 
 - Start from the caller's PID and climb parent PIDs all the way to PID 1. No early stop. This covers Python subprocesses, shell scripts and nested sub-agents without special cases.
@@ -42,14 +48,14 @@ Spinel (Ruby ahead-of-time compiler that produces a standalone native binary by 
 
 A request walks up from the caller. The first process with a profile of its own decides, else the default applies:
 1. A process row: pid plus start time (the start time tells a reused pid apart). The slots are the process rows. Flipping a slot sets its row.
-2. An app row: the team identifier in an executable's code signature. Every app from that team (the `claude` CLI and `Claude.app`) gets the profile.
+2. An app row: the executable's path. The `claude` CLI and `Claude.app` paths get the profile.
 3. The default row.
 
-Seeded rows: Anthropic's team `Q6L2SF6YDW` maps to `ro`. Default maps to `rw`. A chain that does not reach launchd gets `ro`. The table lives in the daemon's memory only; a daemon restart returns it to the seed.
+Seeded rows: the `claude` CLI and `Claude.app` map to `ro`. Default maps to `rw`. A chain that does not reach launchd gets `ro`. The table lives in the daemon's memory only; a daemon restart returns it to the seed.
 
 A profile is a bundle of credentials (GitHub, Gmail and others). A tool takes the credential of its own class from the profile it is given.
 
-Cost: a team lookup takes 10 to 17 ms for a signed binary the first time and about 3 ms after, and under 1 ms for an unsigned one. A chain has about two signed binaries, so a helper call is about 30 ms uncached. For the Claude Code hook (1C), the daemon does the lookup and caches it by pid and start time, so the hook itself stays small. The hook can also return at once for commands that do not mention git, `gh` or `psql`.
+The Claude Code hook (1C) can return at once for commands that do not mention git, `gh` or `psql`.
 
 ### Token storage
 
@@ -150,7 +156,7 @@ Type `granular-daemon` in a spare terminal tab and leave it running.
 Git and `gh` now ask the daemon over `~/.granular/sock`, and only the daemon reads the Keychain for them. Every request prints the caller's chain on one line, outermost first, with a slot number on each process that can carry a profile:
 `login > zsh [2] > claude [1] > node > git > git-remote-https: ro`
 
-- The daemon decides by the profile table (see Mechanism). The first process with a profile decides: a slot you flipped, else a table row (`APP_TEAMS` in `granular.rb`, seeded with Anthropic's team for `claude` and `Claude.app`). With none the caller gets `DEFAULT_PROFILE` (`rw`).
+- The daemon decides by the profile table (see Mechanism). The first process with a profile decides: a slot you flipped, else a table row (seeded for `claude` and `Claude.app`). With none the caller gets `DEFAULT_PROFILE` (`rw`).
 - Slots 1 to 9 go to every matched process the daemon sees and to the outermost shell above it.
 - Type a slot number and Enter in the daemon's tab to flip that process between `ro` and `rw`. Enter alone lists the slots with their pid and working directory. The slot list shows a process only after it has made a request or the scan has found a `claude` by name.
 - A slot is freed when its process exits, and its number is reused.
@@ -270,10 +276,19 @@ Checks (PASS or FAIL for each; the script exits 1 if any fails):
 - Claude could type into the daemon's terminal to flip its own slot.
 - `Claude.app`'s own Terminal panel descends from `Claude.app`, so the user's in-app terminal gets `ro`. A process row flips it.
 - With the default `rw`, a terminal is not trusted, only not matched. Claude can script one (`osascript`, `open -a Terminal`), and the command runs outside its chain and gets `rw`. Running Claude as a separate user closes this.
-- A process whose path cannot be read has no team and matches no row. From inside Claude's sandbox, the `claude` process is such a process.
+- A process whose path cannot be read has no path and matches no row. From inside Claude's sandbox, the `claude` process is such a process.
 - Nested `claude` processes: the nearest one decides.
 
-## 14. Developer
+## 14. Uninstall
+
+1. Stop `granular-daemon` (Ctrl-C in its tab) and remove `~/.granular`.
+2. `make uninstall` removes `granular` and its links (`granular-git`, `granular-passwd`, `granular-daemon`, `gh`) from `/usr/local/bin`.
+3. In `~/.gitconfig`, remove the empty `helper =` line and `helper = /usr/local/bin/granular-git`. Add `helper = osxkeychain` back if you want it.
+4. Restore brew's `gh`: `brew link gh`, then `gh auth login`.
+5. Delete the vault: `security delete-keychain ~/Library/Keychains/granular.keychain-db`.
+6. Revoke the `ro` and `rw` tokens in GitHub's token settings.
+
+## 15. Developer
 
 - Compile: `make link`. Install: `make install`. Remove: `make uninstall`. Clean: `make clean`.
 - Run all three tests after every build. Each rebuild changes the binary, so the Keychain prompts come back.
@@ -281,4 +296,4 @@ Checks (PASS or FAIL for each; the script exits 1 if any fails):
   - `VAULT`: the keychain file in `~/Library/Keychains`. Empty uses the login keychain.
   - `REQUIRE_DAEMON`: default `false`. `true` makes Git and `gh` give no token when the daemon is not running.
   - `REAL_GH`: the real `gh`, default `/opt/homebrew/opt/gh/bin/gh`. On an Intel Mac use `/usr/local/opt/gh/bin/gh`.
-  - `APP_TEAMS`, `APP_PROFILES`, `DEFAULT_PROFILE`: the table rows.
+  - `APP_PROFILES`, `DEFAULT_PROFILE`: the table rows.
