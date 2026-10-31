@@ -3,7 +3,6 @@ module G
   ffi_func :granular_parent_pid,  [:int],         :int
   ffi_func :granular_pid_path,    [:int],         :str
   ffi_func :granular_pid_start,   [:int],         :str
-  ffi_func :granular_pid_team,    [:int],         :str
   ffi_func :granular_vault,       [:str],         :int
   ffi_func :granular_vault_create, [:str],        :int
   ffi_func :granular_kc_login,    [:str, :str],   :str
@@ -31,10 +30,10 @@ KEYCHAIN_PREFIX = "granular:"
 MAX_DEPTH = 64
 HOSTS = ["github.com"]
 SHELLS = ["sh", "bash", "zsh", "fish", "dash", "ksh", "tcsh"]
-# App rows, matched by the team in an executable's code signature. The nearest process above the caller
-# with a row decides. Anthropic PBC signs the claude CLI and Claude.app.
-APP_TEAMS = ["Q6L2SF6YDW"]
-APP_PROFILES = ["ro"]
+# App rows, matched by the executable's file name: the claude CLI and Claude.app. The nearest process
+# above the caller with a row decides.
+APP_NAMES = ["claude", "Claude"]
+APP_PROFILES = ["ro", "ro"]
 DEFAULT_PROFILE = "rw"
 # git and gh ask granular-daemon. true: with no daemon they give no token. false: they decide in their own process.
 REQUIRE_DAEMON = false
@@ -54,13 +53,12 @@ def ancestors(pid)
   chain
 end
 
-# The app row for pid's code signature, or -1 if it is unsigned or has no row.
+# The app row for pid's executable file name, or -1 if it has no row.
 def app_row(pid)
-  team = G.granular_pid_team(pid)
-  return -1 if team == ""
+  name = File.basename(G.granular_pid_path(pid))
   i = 0
-  while i < APP_TEAMS.length
-    return i if APP_TEAMS[i] == team
+  while i < APP_NAMES.length
+    return i if APP_NAMES[i] == name
     i += 1
   end
   -1
@@ -72,7 +70,8 @@ def locked_above(pid, verbose)
   i = 0
   while i < chain.length
     row = app_row(chain[i])
-    $stderr.puts "walk pid=#{chain[i]} team=#{G.granular_pid_team(chain[i])}" if verbose
+    path = G.granular_pid_path(chain[i])
+    $stderr.puts "walk pid=#{chain[i]} path=#{path == "" ? "(none)" : path}" if verbose
     return 1 if row >= 0
     i += 1
   end
