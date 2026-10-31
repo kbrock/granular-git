@@ -1,4 +1,4 @@
-CFLAGS = -Wall -Wextra
+CFLAGS = -Wall -Wextra -Wno-deprecated-declarations
 BUILD  = build
 
 all: link
@@ -7,8 +7,6 @@ link: $(BUILD)/granular
 	ln -sf granular $(BUILD)/granular-git
 	ln -sf granular $(BUILD)/granular-passwd
 	ln -sf granular $(BUILD)/granular-daemon
-	mkdir -p $(BUILD)/shims
-	ln -sf ../granular $(BUILD)/shims/gh
 
 $(BUILD)/granular.o: granular.c granular.h
 	mkdir -p $(BUILD)
