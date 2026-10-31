@@ -11,7 +11,6 @@ req='protocol=https\nhost=github.com\n\n'
 real_gh=$(sed -n 's/^REAL_GH = "\(.*\)"$/\1/p' "$dir/granular.rb")
 vault=$(sed -n 's/^VAULT = "\(.*\)"$/\1/p' "$dir/granular.rb")
 vault_path=$HOME/Library/Keychains/$vault
-login_path=$HOME/Library/Keychains/login.keychain-db
 fails=0
 
 check() {
@@ -109,8 +108,7 @@ first_gh && [ -n "$(type -ap gh | tail -n +2)" ] &&
   echo "NOTE  another gh is on PATH after the wrapper: $(type -ap gh | tail -n +2 | tr '\n' ' ')"
 check "gh works through the wrapper" "store logins: $bin/granular-passwd ro github.com and rw github.com" gh_authenticated
 
-echo "entries in each keychain (information, not a pass or fail)"
+echo "entries in the vault (information, not a pass or fail)"
 [ -n "$vault" ] && show_entries "vault" "$vault_path"
-show_entries "login keychain" "$login_path"
 
 [ "$fails" -eq 0 ]
