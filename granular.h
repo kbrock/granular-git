@@ -8,8 +8,20 @@ int granular_parent_pid(int pid);
  * process. A reused pid has a different start time. */
 const char *granular_pid_start(int pid);
 
+/* Team identifier from the code signature of the running process pid, from a static buffer, or ""
+ * if it is unsigned or unreadable. */
+const char *granular_pid_team(int pid);
+
 /* Executable path of pid from a static buffer, or "" if unreadable. */
 const char *granular_pid_path(int pid);
+
+/* Makes path the only keychain that granular_kc_login and granular_kc_set use. An empty path selects the
+ * default search list. Returns -1 if the file cannot be opened. */
+int granular_vault(const char *path);
+
+/* Creates the keychain file at path. A system dialog asks for its password. It stays unlocked for a day
+ * and through sleep. Returns 0 on success. */
+int granular_vault_create(const char *path);
 
 /* The first item of service, narrowed to account if account is not empty, as "<account> <secret>"
  * from a static buffer, or "" if there is none or the account holds a space. */
@@ -42,10 +54,9 @@ const char *granular_claude_pids(void);
 /* Working directory of pid from a static buffer, or "" if unreadable. */
 const char *granular_pid_cwd(int pid);
 
-/* Runs the next executable called name on PATH that is not a copy of this program, with env_name set to
- * value (an empty value removes it) and this program's original arguments. Returns -1 if none
- * could be run. */
-int granular_exec_other(const char *name, const char *env_name, const char *value);
+/* Runs the executable at path with env_name set to value (an empty value removes it) and this
+ * program's original arguments. Returns -1 if it could not be run. */
+int granular_exec(const char *path, const char *env_name, const char *value);
 
 /* Pid of the process on the other end of a connected socket, or -1. */
 int granular_peer_pid(int fd);

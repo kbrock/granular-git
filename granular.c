@@ -102,6 +102,88 @@ const char *granular_pid_path(int pid)
 	return buf;
 }
 
+static void copy_team(CFDictionaryRef info, char *buf, int len)
+{
+	CFStringRef team = CFDictionaryGetValue(info, kSecCodeInfoTeamIdentifier);
+
+	if (team)
+		CFStringGetCString(team, buf, len, kCFStringEncodingUTF8);
+}
+
+/* The running process first, which sees a binary that was replaced on disk. Its file when the
+ * process cannot be inspected. */
+const char *granular_pid_team(int pid)
+{
+	static char buf[32];
+	char path[PROC_PIDPATHINFO_MAXSIZE];
+	CFMutableDictionaryRef attrs = CFDictionaryCreateMutable(kCFAllocatorDefault, 0,
+					 &kCFTypeDictionaryKeyCallBacks, &kCFTypeDictionaryValueCallBacks);
+	CFNumberRef num = CFNumberCreate(kCFAllocatorDefault, kCFNumberIntType, &pid);
+	SecCodeRef code = NULL;
+	SecStaticCodeRef file = NULL;
+	CFDictionaryRef info = NULL;
+
+	buf[0] = '\0';
+	CFDictionarySetValue(attrs, kSecGuestAttributePid, num);
+	if (SecCodeCopyGuestWithAttributes(NULL, attrs, kSecCSDefaultFlags, &code) == errSecSuccess &&
+	    SecCodeCopySigningInformation(code, kSecCSSigningInformation, &info) == errSecSuccess)
+		copy_team(info, buf, sizeof(buf));
+	else if (proc_pidpath(pid, path, sizeof(path)) > 0) {
+		CFURLRef url = CFURLCreateFromFileSystemRepresentation(kCFAllocatorDefault, (UInt8 *)path,
+								       strlen(path), false);
+
+		if (SecStaticCodeCreateWithPath(url, kSecCSDefaultFlags, &file) == errSecSuccess &&
+		    SecCodeCopySigningInformation(file, kSecCSSigningInformation, &info) == errSecSuccess)
+			copy_team(info, buf, sizeof(buf));
+		CFRelease(url);
+	}
+	if (info)
+		CFRelease(info);
+	if (file)
+		CFRelease(file);
+	if (code)
+		CFRelease(code);
+	CFRelease(num);
+	CFRelease(attrs);
+	return buf;
+}
+
+/* The keychain file that holds the logins, or NULL for the default search list. */
+static SecKeychainRef vault;
+
+int granular_vault(const char *path)
+{
+	SecKeychainStatus status;
+
+	if (vault) {
+		CFRelease(vault);
+		vault = NULL;
+	}
+	if (!path || !*path)
+		return 0;
+	if (SecKeychainOpen(path, &vault) != errSecSuccess || SecKeychainGetStatus(vault, &status) != errSecSuccess) {
+		if (vault)
+			CFRelease(vault);
+		vault = NULL;
+		return -1;
+	}
+	return 0;
+}
+
+/* Asks for the new password in a system dialog, so it never passes through this program. The vault
+ * stays unlocked for a day and through sleep. */
+int granular_vault_create(const char *path)
+{
+	SecKeychainRef kc = NULL;
+	SecKeychainSettings settings = { SEC_KEYCHAIN_SETTINGS_VERS1, 0, 1, 86400 };
+
+	if (SecKeychainCreate(path, 0, NULL, true, NULL, &kc) != errSecSuccess)
+		return -1;
+	SecKeychainSetSettings(kc, &settings);
+	CFRelease(kc);
+	return 0;
+}
+
 static CFMutableDictionaryRef new_dictionary(void)
 {
 	return CFDictionaryCreateMutable(kCFAllocatorDefault, 0,
@@ -123,6 +205,12 @@ static CFMutableDictionaryRef item_query(const char *service, const char *accoun
 		CFDictionarySetValue(q, kSecAttrAccount, a);
 		CFRelease(a);
 	}
+	if (vault) {
+		CFArrayRef list = CFArrayCreate(kCFAllocatorDefault, (const void **)&vault, 1, &kCFTypeArrayCallBacks);
+
+		CFDictionarySetValue(q, kSecMatchSearchList, list);
+		CFRelease(list);
+	}
 	return q;
 }
 
@@ -134,6 +222,10 @@ int granular_kc_set(const char *service, const char *account, const char *secret
 	OSStatus st;
 
 	CFDictionarySetValue(attrs, kSecValueData, data);
+	if (vault) {
+		CFDictionaryRemoveValue(attrs, kSecMatchSearchList);
+		CFDictionarySetValue(attrs, kSecUseKeychain, vault);
+	}
 	st = SecItemAdd(attrs, NULL);
 	if (st == errSecDuplicateItem) {
 		CFMutableDictionaryRef change = new_dictionary();
@@ -333,36 +425,17 @@ int granular_close(int fd)
 	return close(fd);
 }
 
-int granular_exec_other(const char *name, const char *env_name, const char *value)
+int granular_exec(const char *path, const char *env_name, const char *value)
 {
-	char self[PROC_PIDPATHINFO_MAXSIZE];
-	char real_self[PATH_MAX];
-	char real_cand[PATH_MAX];
-	char cand[PATH_MAX];
 	char **argv = *_NSGetArgv();
-	char *path = getenv("PATH");
-	char *dup;
-	char *dir;
-	char *save = NULL;
-	const char *self_name;
 
-	if (!path || proc_pidpath(getpid(), self, sizeof(self)) <= 0 || !realpath(self, real_self))
+	if (access(path, X_OK))
 		return -1;
-	self_name = strrchr(real_self, '/');
-	dup = strdup(path);
-	for (dir = strtok_r(dup, ":", &save); dir; dir = strtok_r(NULL, ":", &save)) {
-		snprintf(cand, sizeof(cand), "%s/%s", dir, name);
-		/* Another copy of this program (build/ and an install) would exec back and forth. */
-		if (access(cand, X_OK) || !realpath(cand, real_cand) ||
-		    !strcmp(strrchr(real_cand, '/'), self_name))
-			continue;
-		if (*value)
-			setenv(env_name, value, 1);
-		else
-			unsetenv(env_name);
-		argv[0] = (char *)name;
-		execv(cand, argv);
-	}
-	free(dup);
+	if (*value)
+		setenv(env_name, value, 1);
+	else
+		unsetenv(env_name);
+	argv[0] = "gh";
+	execv(path, argv);
 	return -1;
 }

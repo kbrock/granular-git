@@ -3,6 +3,9 @@ module G
   ffi_func :granular_parent_pid,  [:int],         :int
   ffi_func :granular_pid_path,    [:int],         :str
   ffi_func :granular_pid_start,   [:int],         :str
+  ffi_func :granular_pid_team,    [:int],         :str
+  ffi_func :granular_vault,       [:str],         :int
+  ffi_func :granular_vault_create, [:str],        :int
   ffi_func :granular_kc_login,    [:str, :str],   :str
   ffi_func :granular_kc_set,      [:str, :str, :str], :int
   ffi_func :granular_read_secret, [:str],         :str
@@ -15,7 +18,7 @@ module G
   ffi_func :granular_claude_pids, [],             :str
   ffi_func :granular_pid_cwd,     [:int],         :str
   ffi_func :granular_close,       [:int],         :int
-  ffi_func :granular_exec_other,  [:str, :str, :str], :int
+  ffi_func :granular_exec,        [:str, :str, :str], :int
   ffi_func :granular_peer_pid,    [:int],         :int
   ffi_func :granular_read_line,   [:int],         :str
   ffi_func :granular_write_line,  [:int, :str],   :int
@@ -28,8 +31,17 @@ KEYCHAIN_PREFIX = "granular:"
 MAX_DEPTH = 64
 HOSTS = ["github.com"]
 SHELLS = ["sh", "bash", "zsh", "fish", "dash", "ksh", "tcsh"]
-# true: git and gh ask granular-daemon. false: each program decides in its own process.
-USE_DAEMON = true
+# App rows, matched by the team in an executable's code signature. The nearest process above the caller
+# with a row decides. Anthropic PBC signs the claude CLI and Claude.app.
+APP_TEAMS = ["Q6L2SF6YDW"]
+APP_PROFILES = ["ro"]
+DEFAULT_PROFILE = "rw"
+# git and gh ask granular-daemon. true: with no daemon they give no token. false: they decide in their own process.
+REQUIRE_DAEMON = false
+# The keychain file in ~/Library/Keychains that holds the logins. Empty uses the login keychain instead.
+VAULT = "granular.keychain-db"
+# The gh that the wrapper runs. `brew unlink gh` leaves it here and takes it off PATH.
+REAL_GH = "/opt/homebrew/opt/gh/bin/gh"
 
 # Pids from pid up to launchd. The chain is complete only if it ends at 1.
 def ancestors(pid)
@@ -42,27 +54,45 @@ def ancestors(pid)
   chain
 end
 
-# 1 if a claude executable is in pid's ancestry, 0 if not, -1 if the walk fails.
-def claude_walk(pid, verbose)
+# The app row for pid's code signature, or -1 if it is unsigned or has no row.
+def app_row(pid)
+  team = G.granular_pid_team(pid)
+  return -1 if team == ""
+  i = 0
+  while i < APP_TEAMS.length
+    return i if APP_TEAMS[i] == team
+    i += 1
+  end
+  -1
+end
+
+# 1 if an app row is in pid's ancestry, 0 if not, -1 if the walk fails.
+def locked_above(pid, verbose)
   chain = ancestors(pid)
   i = 0
   while i < chain.length
-    path = G.granular_pid_path(chain[i])
-    $stderr.puts "walk pid=#{chain[i]} path=#{path == "" ? "(none)" : path}" if verbose
-    return 1 if File.basename(path) == "claude"
+    row = app_row(chain[i])
+    $stderr.puts "walk pid=#{chain[i]} team=#{G.granular_pid_team(chain[i])}" if verbose
+    return 1 if row >= 0
     i += 1
   end
   chain.last == 1 ? 0 : -1
+end
+
+# Points the Keychain calls at the vault. 0 if it is open, -1 if the file is missing.
+def open_vault
+  return 0 if VAULT == ""
+  G.granular_vault(ENV["HOME"] + "/Library/Keychains/" + VAULT)
 end
 
 def socket_path
   ENV["HOME"] + "/.granular/sock"
 end
 
-# The daemon's reply line, or "" if it cannot be reached or does not answer.
+# The daemon's reply line, "" if it does not answer, or "down" if it cannot be reached.
 def ask_daemon(host, user)
   fd = G.granular_connect(socket_path)
-  return "" if fd < 0
+  return "down" if fd < 0
   G.granular_write_line(fd, request_for(host, user))
   reply = G.granular_read_line(fd)
   G.granular_close(fd)
@@ -110,6 +140,7 @@ def reply_for(request, profile)
   return "deny bad request" unless (words.length == 2 || words.length == 3) && words[0] == "get"
   return "deny unknown host" unless HOSTS.include?(words[1])
 
+  return "deny no vault" if open_vault != 0
   login = G.granular_kc_login(KEYCHAIN_PREFIX + profile + ":" + words[1], words.length == 3 ? words[2] : "")
   return "deny no item" if login == ""
   "ok " + login
@@ -117,41 +148,13 @@ end
 
 # The reply line for a host, from the daemon or decided in this process.
 def token_reply(host, user)
-  return ask_daemon(host, user) if USE_DAEMON
-  reply_for(request_for(host, user), claude_walk(G.getpid, false) == 0 ? "rw" : "ro")
+  reply = ask_daemon(host, user)
+  return reply unless reply == "down"
+  return "" if REQUIRE_DAEMON
+  reply_for(request_for(host, user), profile_for(G.getpid, [0, 0, 0, 0, 0, 0, 0, 0, 0], ["", "", "", "", "", "", "", "", ""], ["", "", "", "", "", "", "", "", ""]))
 end
 
 # Pids in chain (caller first) whose executable is claude.
-def claude_nodes(chain)
-  found = []
-  i = 0
-  while i < chain.length
-    found << chain[i] if File.basename(G.granular_pid_path(chain[i])) == "claude"
-    i += 1
-  end
-  found
-end
-
-# Pids in chain (caller first) that can carry a profile: every claude, then the outermost shell
-# with no claude above it, which is where a person sits.
-def node_pids(chain)
-  found = []
-  human = -1
-  i = 0
-  while i < chain.length
-    name = File.basename(G.granular_pid_path(chain[i]))
-    if name == "claude"
-      found << chain[i]
-      human = -1
-    elsif SHELLS.include?(name)
-      human = chain[i]
-    end
-    i += 1
-  end
-  found << human if human != -1
-  found
-end
-
 # Position of pid in pids, or -1.
 def node_index(pids, pid)
   i = 0
@@ -191,27 +194,31 @@ def claim_slot(pids, starts, states, pid)
   -1
 end
 
-# The daemon's profile for pid. A caller with no claude above it is the user and gets rw. Under claude,
-# the nearest claude that has been set decides, and ro if none has. A chain that does not reach launchd
-# gets ro. Each claude seen takes a free slot.
+# The daemon's profile for pid. Walking up from the caller, the first process with a profile of its own
+# decides: its slot if one is set, else its app row. With none the default applies. The outermost shell
+# takes a slot when nothing matched, so a person's terminal can be flipped too. A chain that does not
+# reach launchd gets ro.
 def profile_for(pid, pids, starts, states)
   chain = ancestors(pid)
   return "ro" unless chain.last == 1
   forget_gone(pids, starts, states)
-  nodes = node_pids(chain)
-  profile = claude_nodes(chain).length == 0 ? "rw" : "ro"
-  decided = false
-  k = 0
-  while k < nodes.length
-    i = node_index(pids, nodes[k])
-    i = claim_slot(pids, starts, states, nodes[k]) if i < 0
-    if i >= 0 && !decided && states[i] != ""
-      profile = states[i]
-      decided = true
+  shell = -1
+  j = 0
+  while j < chain.length - 1
+    i = node_index(pids, chain[j])
+    return states[i] if i >= 0 && states[i] != ""
+    row = app_row(chain[j])
+    if row >= 0
+      claim_slot(pids, starts, states, chain[j]) if i < 0
+      return APP_PROFILES[row]
     end
-    k += 1
+    shell = chain[j] if SHELLS.include?(File.basename(G.granular_pid_path(chain[j])))
+    j += 1
   end
-  profile
+  if shell != -1 && node_index(pids, shell) < 0
+    claim_slot(pids, starts, states, shell)
+  end
+  DEFAULT_PROFILE
 end
 
 # The whole chain on one line, outermost first and without launchd: "login > zsh [2] > claude [1] > git".
@@ -261,7 +268,7 @@ def show_nodes(pids, starts, states)
     end
     i += 1
   end
-  $stderr.puts "granular-daemon: no claude running" if shown == 0
+  $stderr.puts "granular-daemon: nothing to flip yet" if shown == 0
 end
 
 # A slot number flips that claude between ro and rw. Anything else lists them.
@@ -312,8 +319,8 @@ end
 # runs the real gh with it in GH_TOKEN.
 def gh_wrapper
   if ARGV[0] == "auth"
-    G.granular_exec_other("gh", "GH_TOKEN", "")
-    $stderr.puts "gh: no other gh found on PATH"
+    G.granular_exec(REAL_GH, "GH_TOKEN", "")
+    $stderr.puts "gh: cannot run #{REAL_GH}"
     return 1
   end
   reply = token_reply("github.com", "")
@@ -322,13 +329,26 @@ def gh_wrapper
     $stderr.puts "gh: #{reply == "" ? "no reply from daemon" : reply}"
     return 1
   end
-  G.granular_exec_other("gh", "GH_TOKEN", login[1])
-  $stderr.puts "gh: no other gh found on PATH"
+  G.granular_exec(REAL_GH, "GH_TOKEN", login[1])
+  $stderr.puts "gh: cannot run #{REAL_GH}"
   1
 end
 
-def passwd(profile, host, verbose)
-  if claude_walk(G.getpid, verbose) != 0
+# Opens the vault, creating it first if the file is missing. False if it cannot.
+def ensure_vault
+  return true if open_vault == 0
+  path = ENV["HOME"] + "/Library/Keychains/" + VAULT
+  $stderr.puts "granular-passwd: creating #{path}. A dialog asks for its password."
+  if G.granular_vault_create(path) != 0 || open_vault != 0
+    $stderr.puts "granular-passwd: cannot create #{path}"
+    return false
+  end
+  true
+end
+
+# Copies a login from the login keychain into the vault. The token stays inside this process.
+def copy_from_login(profile, host)
+  if locked_above(G.getpid, false) != 0
     $stderr.puts "granular-passwd: refusing to run under Claude or an unknown caller"
     return 1
   end
@@ -336,6 +356,37 @@ def passwd(profile, host, verbose)
     $stderr.puts "granular-passwd: unknown host #{host}"
     return 1
   end
+  if VAULT == ""
+    $stderr.puts "granular-passwd: VAULT is empty, so the logins already live in the login keychain"
+    return 1
+  end
+  item = KEYCHAIN_PREFIX + profile + ":" + host
+  G.granular_vault("")
+  parts = G.granular_kc_login(item, "").split(" ")
+  if parts.length != 2
+    $stderr.puts "granular-passwd: no #{item} in the login keychain"
+    return 1
+  end
+  return 1 unless ensure_vault
+  if G.granular_kc_set(item, parts[0], parts[1]) != 0 || G.granular_kc_login(item, parts[0]) != parts[0] + " " + parts[1]
+    $stderr.puts "granular-passwd: vault write failed"
+    return 1
+  end
+  $stderr.puts "granular-passwd: copied #{item} / #{parts[0]} into #{VAULT}"
+  $stderr.puts "delete the login keychain copy with: security delete-generic-password -s #{item} -a #{parts[0]}"
+  0
+end
+
+def passwd(profile, host, verbose)
+  if locked_above(G.getpid, verbose) != 0
+    $stderr.puts "granular-passwd: refusing to run under Claude or an unknown caller"
+    return 1
+  end
+  unless HOSTS.include?(host)
+    $stderr.puts "granular-passwd: unknown host #{host}"
+    return 1
+  end
+  return 1 unless ensure_vault
   $stderr.print "Username: "
   user = ($stdin.gets || "").chomp
   if user == "" || user.include?(" ")
@@ -374,10 +425,13 @@ if program == "git" && args.length == 1
   exit git_helper(args[0])
 elsif program == "passwd" && args.length == 2
   exit passwd(args[0], args[1], verbose)
+elsif program == "passwd" && args.length == 3 && args[0] == "--from-login"
+  exit copy_from_login(args[1], args[2])
 elsif program == "daemon" && args.length == 0
   exit daemon(verbose)
 end
 $stderr.puts "usage: granular-git [-v] <get|store|erase>"
 $stderr.puts "       granular-daemon [-v]"
 $stderr.puts "       granular-passwd [-v] <profile> <host>"
+$stderr.puts "       granular-passwd --from-login <profile> <host>"
 exit 2
