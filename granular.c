@@ -148,7 +148,7 @@ const char *granular_pid_team(int pid)
 	return buf;
 }
 
-/* The keychain file that holds the logins, or NULL for the default search list. */
+/* The keychain file that holds the logins. */
 static SecKeychainRef vault;
 
 int granular_vault(const char *path)
@@ -159,8 +159,6 @@ int granular_vault(const char *path)
 		CFRelease(vault);
 		vault = NULL;
 	}
-	if (!path || !*path)
-		return 0;
 	if (SecKeychainOpen(path, &vault) != errSecSuccess || SecKeychainGetStatus(vault, &status) != errSecSuccess) {
 		if (vault)
 			CFRelease(vault);
@@ -332,13 +330,28 @@ int granular_listen(const char *path)
 	return fd;
 }
 
-int granular_connect(const char *path)
+/* The socket is trusted only if it is ours and the directory holding it is ours and closed to others. */
+int granular_fetch_socket(const char *path)
 {
 	struct sockaddr_un addr;
+	struct stat st;
+	char dir[PATH_MAX];
+	char *slash;
 	int fd;
 
-	if (sock_addr(&addr, path))
+	if (lstat(path, &st))
 		return -1;
+	if (!S_ISSOCK(st.st_mode) || st.st_uid != getuid())
+		return -2;
+	snprintf(dir, sizeof(dir), "%s", path);
+	slash = strrchr(dir, '/');
+	if (!slash)
+		return -2;
+	*slash = '\0';
+	if (lstat(dir, &st) || !S_ISDIR(st.st_mode) || st.st_uid != getuid() || (st.st_mode & 077))
+		return -2;
+	if (sock_addr(&addr, path))
+		return -2;
 	fd = socket(AF_UNIX, SOCK_STREAM, 0);
 	if (fd < 0)
 		return -1;

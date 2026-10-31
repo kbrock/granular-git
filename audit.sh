@@ -83,13 +83,9 @@ check "~/.netrc has no github.com entry" "remove the github.com lines from ~/.ne
 check "no stored git credentials for github.com" "remove github.com from ~/.git-credentials and ~/.config/git/credentials" no_git_credentials
 
 echo "vault"
-if [ -z "$vault" ]; then
-  echo "NOTE  VAULT is empty in granular.rb: logins are read from the login keychain"
-else
-  check "the vault file exists ($vault_path)" "$dir/vault-create.sh" vault_exists
-  check "granular:ro:github.com is in the vault" "$bin/granular-passwd --from-login ro github.com   (or: $bin/granular-passwd ro github.com)" in_vault ro
-  check "granular:rw:github.com is in the vault" "$bin/granular-passwd --from-login rw github.com   (or: $bin/granular-passwd rw github.com)" in_vault rw
-fi
+check "the vault file exists ($vault_path)" "run $bin/granular-passwd ro github.com, which creates it" vault_exists
+check "granular:ro:github.com is in the vault" "$bin/granular-passwd ro github.com" in_vault ro
+check "granular:rw:github.com is in the vault" "$bin/granular-passwd rw github.com" in_vault rw
 
 echo "osxkeychain"
 check "no saved github.com item in the keychain" \
@@ -109,6 +105,6 @@ first_gh && [ -n "$(type -ap gh | tail -n +2)" ] &&
 check "gh works through the wrapper" "store logins: $bin/granular-passwd ro github.com and rw github.com" gh_authenticated
 
 echo "entries in the vault (information, not a pass or fail)"
-[ -n "$vault" ] && show_entries "vault" "$vault_path"
+show_entries "vault" "$vault_path"
 
 [ "$fails" -eq 0 ]

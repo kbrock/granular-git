@@ -15,8 +15,8 @@ const char *granular_pid_team(int pid);
 /* Executable path of pid from a static buffer, or "" if unreadable. */
 const char *granular_pid_path(int pid);
 
-/* Makes path the only keychain that granular_kc_login and granular_kc_set use. An empty path selects the
- * default search list. Returns -1 if the file cannot be opened. */
+/* Makes path the only keychain that granular_kc_login and granular_kc_set use. Returns -1 if the file
+ * cannot be opened. */
 int granular_vault(const char *path);
 
 /* Creates the keychain file at path. A system dialog asks for its password. It stays unlocked for a day
@@ -35,9 +35,12 @@ const char *granular_read_secret(const char *prompt);
  * exists as anything else (a symlink, a file, another user's directory). */
 int granular_private_dir(const char *path);
 
-/* Unix socket primitives for the daemon and its clients. Return an fd, or -1 on error. */
+/* Connects to the daemon's socket at path. Returns an fd, -1 if there is no daemon, or -2 if the socket
+ * or the directory holding it is not private to the caller (not owned by them, or open to others). */
+int granular_fetch_socket(const char *path);
+
+/* Unix socket primitives for the daemon. Return an fd, or -1 on error. */
 int granular_listen(const char *path);   /* removes a stale socket, mode 0600 */
-int granular_connect(const char *path);
 int granular_accept(int listen_fd);
 int granular_close(int fd);
 
