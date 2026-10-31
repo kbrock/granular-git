@@ -10,7 +10,7 @@ module G
   ffi_func :granular_read_secret, [:str],         :str
   ffi_func :granular_private_dir, [:str],         :int
   ffi_func :granular_listen,      [:str],         :int
-  ffi_func :granular_connect,     [:str],         :int
+  ffi_func :granular_fetch_socket, [:str],        :int
   ffi_func :granular_accept,      [:int],         :int
   ffi_func :granular_accept_or_enter, [:int],     :int
   ffi_func :granular_last_line,   [],             :str
@@ -37,7 +37,7 @@ APP_PROFILES = ["ro", "ro"]
 DEFAULT_PROFILE = "rw"
 # git and gh ask granular-daemon. true: with no daemon they give no token. false: they decide in their own process.
 REQUIRE_DAEMON = false
-# The keychain file in ~/Library/Keychains that holds the logins. Empty uses the login keychain instead.
+# The keychain file in ~/Library/Keychains that holds the logins.
 VAULT = "granular.keychain-db"
 # The gh that the wrapper runs. `brew unlink gh` leaves it here and takes it off PATH.
 REAL_GH = "/opt/homebrew/opt/gh/bin/gh"
@@ -80,7 +80,6 @@ end
 
 # Points the Keychain calls at the vault. 0 if it is open, -1 if the file is missing.
 def open_vault
-  return 0 if VAULT == ""
   G.granular_vault(ENV["HOME"] + "/Library/Keychains/" + VAULT)
 end
 
@@ -88,10 +87,12 @@ def socket_path
   ENV["HOME"] + "/.granular/sock"
 end
 
-# The daemon's reply line, "" if it does not answer, or "down" if it cannot be reached.
+# The daemon's reply line, "" if it does not answer, "down" if there is no daemon, or a deny if the
+# socket is not private to the user.
 def ask_daemon(host, user)
-  fd = G.granular_connect(socket_path)
-  return "down" if fd < 0
+  fd = G.granular_fetch_socket(socket_path)
+  return "down" if fd == -1
+  return "deny socket is not private to you" if fd < 0
   G.granular_write_line(fd, request_for(host, user))
   reply = G.granular_read_line(fd)
   G.granular_close(fd)
@@ -345,37 +346,6 @@ def ensure_vault
   true
 end
 
-# Copies a login from the login keychain into the vault. The token stays inside this process.
-def copy_from_login(profile, host)
-  if locked_above(G.getpid, false) != 0
-    $stderr.puts "granular-passwd: refusing to run under Claude or an unknown caller"
-    return 1
-  end
-  unless HOSTS.include?(host)
-    $stderr.puts "granular-passwd: unknown host #{host}"
-    return 1
-  end
-  if VAULT == ""
-    $stderr.puts "granular-passwd: VAULT is empty, so the logins already live in the login keychain"
-    return 1
-  end
-  item = KEYCHAIN_PREFIX + profile + ":" + host
-  G.granular_vault("")
-  parts = G.granular_kc_login(item, "").split(" ")
-  if parts.length != 2
-    $stderr.puts "granular-passwd: no #{item} in the login keychain"
-    return 1
-  end
-  return 1 unless ensure_vault
-  if G.granular_kc_set(item, parts[0], parts[1]) != 0 || G.granular_kc_login(item, parts[0]) != parts[0] + " " + parts[1]
-    $stderr.puts "granular-passwd: vault write failed"
-    return 1
-  end
-  $stderr.puts "granular-passwd: copied #{item} / #{parts[0]} into #{VAULT}"
-  $stderr.puts "delete the login keychain copy with: security delete-generic-password -s #{item} -a #{parts[0]}"
-  0
-end
-
 def passwd(profile, host, verbose)
   if locked_above(G.getpid, verbose) != 0
     $stderr.puts "granular-passwd: refusing to run under Claude or an unknown caller"
@@ -424,13 +394,10 @@ if program == "git" && args.length == 1
   exit git_helper(args[0])
 elsif program == "passwd" && args.length == 2
   exit passwd(args[0], args[1], verbose)
-elsif program == "passwd" && args.length == 3 && args[0] == "--from-login"
-  exit copy_from_login(args[1], args[2])
 elsif program == "daemon" && args.length == 0
   exit daemon(verbose)
 end
 $stderr.puts "usage: granular-git [-v] <get|store|erase>"
 $stderr.puts "       granular-daemon [-v]"
 $stderr.puts "       granular-passwd [-v] <profile> <host>"
-$stderr.puts "       granular-passwd --from-login <profile> <host>"
 exit 2

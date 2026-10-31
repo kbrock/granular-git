@@ -67,7 +67,7 @@ The Claude Code hook (1C) can return at once for commands that do not mention gi
 
 ### Vault
 
-Tokens live in a keychain file of our own, `~/Library/Keychains/granular.keychain-db`, with its own password. `VAULT` at the top of `granular.rb` names the file. An empty `VAULT` uses the login keychain. One keychain is searched, never both, so there is no fallback and no config file. `vault-create.sh` creates the file: `security create-keychain`, `security set-keychain-settings -t 86400` (leaving out `-l` keeps it unlocked across sleep) and `security unlock-keychain`, which prompts on the tty and so works over ssh. Never use `-p`, which puts the password in `ps`.
+Tokens live in a keychain file of our own, `~/Library/Keychains/granular.keychain-db`, with its own password. `VAULT` at the top of `granular.rb` names the file. The vault is required: the first `granular-passwd` run creates it. One keychain is searched, so there is no fallback and no config file.
 
 - `granular_kc_*` opens the file with `SecKeychainOpen` and passes it as `kSecUseKeychain` on add and in `kSecMatchSearchList` on reads. Those calls are deprecated and still work for file keychains.
 - `granular-passwd` creates the items in the vault. A read of a locked vault shows macOS's own unlock dialog, which names `granular` and the vault.
@@ -132,18 +132,17 @@ A prompt appears once per binary per item (`ro` and `rw` are two items), and aga
 Type these in your own terminal.
 
 1. `make install`. `granular` and its links (`granular-git`, `granular-passwd`, `granular-daemon`, `gh`) land in `/usr/local/bin`.
-2. Create the vault, which holds the tokens (see The vault): `./vault-create.sh`. Type the password when `security` asks for it.
-3. Create two GitHub tokens:
+2. Create two GitHub tokens:
    - `ro`: fine-grained, owner you, All repositories, with Contents, Pull requests and Issues read-only. Claude gets this one.
    - `rw`: classic with the `repo` scope, plus `workflow`, `gist` or `read:org` if you use them. It reaches every repo your account can push to. A fine-grained token has one owner and cannot reach repos owned by another user.
-4. Store each in the vault. Enter your GitHub username, then paste the token. The command refuses to run under Claude.
+3. Store each in the vault. The first run creates the vault, and a system dialog asks for its password. Enter your GitHub username, then paste the token. The command refuses to run under Claude.
    `granular-passwd ro github.com`
    `granular-passwd rw github.com`
-5. Point Git at the helper in `~/.gitconfig`, with an absolute path:
+4. Point Git at the helper in `~/.gitconfig`, with an absolute path:
    `[credential]`, then `helper =` (empty, clears every earlier helper), then `helper = /usr/local/bin/granular-git`
    Remove any other `credential.helper` lines from your config files.
-6. Take brew's `gh` off PATH: `rm /opt/homebrew/bin/gh`
-7. Remove the credential `gh` holds itself: `gh auth logout -h github.com`
+5. Take brew's `gh` off PATH: `rm /opt/homebrew/bin/gh`
+6. Remove the credential `gh` holds itself: `gh auth logout -h github.com`
 
 Git and `gh` now decide in their own process: a `claude` above them gets `ro`, anyone else gets `rw`.
 - You gain: Claude's pushes fail and yours work, with nothing else running.
@@ -168,22 +167,13 @@ Git and `gh` now ask the daemon over `~/.granular/sock`, and only the daemon rea
 
 The tokens live in a keychain file of their own, `~/Library/Keychains/granular.keychain-db`, with its own password.
 
-Create it once in your own terminal and type the password yourself:
-`./vault-create.sh`
-The first `granular-passwd` run also creates it, through a system dialog that asks for the password. The password stays out of this program.
+The first `granular-passwd` run creates it, through a system dialog that asks for the password. The password stays out of this program.
 
 - It relocks after a day and stays unlocked through sleep. Unlock it from any terminal: `security unlock-keychain ~/Library/Keychains/granular.keychain-db`
-- To move a login you already stored in the login keychain: `granular-passwd --from-login ro github.com`. It copies the item into the vault and prints the command that deletes the old one.
 - Each login is an item: service `granular:<profile>:<host>`, account the username, secret the token. Git and `gh` share them.
 
 - You gain: the tokens sit apart from the rest of your login keychain.
 - You lose: a second password, and a locked vault gives no token until you unlock it.
-
-### The system keychain
-
-An empty `VAULT` at the top of `granular.rb` keeps the tokens in the system (login) keychain instead.
-
-TODO: what you gain and lose.
 
 ## 8. Audit
 
@@ -202,7 +192,7 @@ Some checks read the vault, so a prompt can appear (see What a prompt is). The s
 The tests need a GitHub repo you can push to. Set it up once. The tests look in `~/src/granular-git-test`; `GRANULAR_TEST_REPO` names another path.
 
 Steps:
-1. Have the `ro` and `rw` tokens stored in the vault (Basic mode, steps 3 and 4).
+1. Have the `ro` and `rw` tokens stored in the vault (Basic mode, steps 2 and 3).
 2. Create the repo, either way. Run these in your own terminal, so `gh` gets `rw`.
    - With `gh`:
      ```
@@ -293,7 +283,7 @@ Checks (PASS or FAIL for each; the script exits 1 if any fails):
 - Compile: `make link`. Install: `make install`. Remove: `make uninstall`. Clean: `make clean`.
 - Run all three tests after every build. Each rebuild changes the binary, so the Keychain prompts come back.
 - Switches at the top of `granular.rb`. Rebuild after changing one.
-  - `VAULT`: the keychain file in `~/Library/Keychains`. Empty uses the login keychain.
+  - `VAULT`: the keychain file in `~/Library/Keychains`.
   - `REQUIRE_DAEMON`: default `false`. `true` makes Git and `gh` give no token when the daemon is not running.
   - `REAL_GH`: the real `gh`, default `/opt/homebrew/opt/gh/bin/gh`. On an Intel Mac use `/usr/local/opt/gh/bin/gh`.
   - `APP_PROFILES`, `DEFAULT_PROFILE`: the table rows.
