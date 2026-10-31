@@ -71,7 +71,7 @@ if grep -q '^REQUIRE_DAEMON = true' "$dir/granular.rb"; then
 elif daemon_answers >/dev/null 2>&1; then
   echo "PASS  daemon answers 'get github.com'"
 else
-  echo "NOTE  daemon not running: no slots, and a claude above the caller gets ro by signature"
+  echo "NOTE  daemon not running: no slots, and a claude above the caller gets ro by name"
 fi
 check "git credential fill returns the helper's answer" "fix the checks above first" git_fills
 
