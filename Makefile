@@ -12,8 +12,12 @@ $(BUILD)/granular.o: granular.c granular.h
 	mkdir -p $(BUILD)
 	$(CC) $(CFLAGS) -c granular.c -o $@
 
+SIGN_ID = granular-signing
+
 $(BUILD)/granular: granular.rb $(BUILD)/granular.o
+	./sign-identity.sh $(SIGN_ID)
 	spinel granular.rb -o $@ --link $(BUILD)/granular.o --link -Wl,-framework,Security --link -Wl,-framework,CoreFoundation
+	codesign --force -s $(SIGN_ID) $@
 
 PREFIX = /usr/local/bin
 

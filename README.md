@@ -131,7 +131,7 @@ A prompt appears once per binary per item (`ro` and `rw` are two items), and aga
 
 Type these in your own terminal.
 
-1. `make install`. `granular` and its links (`granular-git`, `granular-passwd`, `granular-daemon`, `gh`) land in `/usr/local/bin`.
+1. `make install`. The first build creates a signing identity, and macOS asks for your login password. The identity signs the binaries so the Keychain's "Always Allow" survives a rebuild. `granular` and its links (`granular-git`, `granular-passwd`, `granular-daemon`, `gh`) land in `/usr/local/bin`.
 2. Create two GitHub tokens:
    - `ro`: fine-grained, owner you, All repositories, with Contents, Pull requests and Issues read-only. Claude gets this one.
    - `rw`: classic with the `repo` scope, plus `workflow`, `gist` or `read:org` if you use them. It reaches every repo your account can push to. A fine-grained token has one owner and cannot reach repos owned by another user.
