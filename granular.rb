@@ -393,6 +393,15 @@ if args[0] == "-v"
   args = args[1..-1]
 end
 program = name.start_with?(SELF_PREFIX) ? name[SELF_PREFIX.length..-1] : ""
+USAGE = [
+  "usage: granular-git [-v] <get|store|erase>",
+  "       granular-daemon [-v]",
+  "       granular-passwd [-v] <profile> <host> [description]"
+]
+if args.length == 1 && (args[0] == "-h" || args[0] == "--help") && program != "git"
+  USAGE.each { |l| puts l }
+  exit 0
+end
 if program == "git" && args.length == 1
   exit git_helper(args[0])
 elsif program == "passwd" && (args.length == 2 || args.length == 3)
@@ -400,7 +409,5 @@ elsif program == "passwd" && (args.length == 2 || args.length == 3)
 elsif program == "daemon" && args.length == 0
   exit daemon(verbose)
 end
-$stderr.puts "usage: granular-git [-v] <get|store|erase>"
-$stderr.puts "       granular-daemon [-v]"
-$stderr.puts "       granular-passwd [-v] <profile> <host> [description]"
+USAGE.each { |l| $stderr.puts l }
 exit 2
