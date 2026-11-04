@@ -349,7 +349,7 @@ def ensure_vault
   true
 end
 
-def passwd(profile, host, description, verbose)
+def passwd(profile, host, description, keep_login, verbose)
   if locked_above(G.getpid, verbose) != 0
     $stderr.puts "granular-passwd: refusing to run under Claude or an unknown caller"
     return 1
@@ -359,19 +359,29 @@ def passwd(profile, host, description, verbose)
     return 1
   end
   return 1 unless ensure_vault
-  $stderr.print "Username: "
-  user = ($stdin.gets || "").chomp
-  if user == "" || user.include?(" ")
-    $stderr.puts "granular-passwd: username must be non-empty with no spaces"
-    return 1
-  end
-  token = G.granular_read_secret("Token: ")
-  if token == ""
-    $stderr.puts "granular-passwd: no token read"
-    return 1
+  item = KEYCHAIN_PREFIX + profile + ":" + host
+  if keep_login
+    words = G.granular_kc_login(item, "").split(" ")
+    if words.length < 2
+      $stderr.puts "granular-passwd: no #{profile} item for #{host}"
+      return 1
+    end
+    user = words[0]
+    token = words[1]
+  else
+    $stderr.print "Username: "
+    user = ($stdin.gets || "").chomp
+    if user == "" || user.include?(" ")
+      $stderr.puts "granular-passwd: username must be non-empty with no spaces"
+      return 1
+    end
+    token = G.granular_read_secret("Token: ")
+    if token == ""
+      $stderr.puts "granular-passwd: no token read"
+      return 1
+    end
   end
 
-  item = KEYCHAIN_PREFIX + profile + ":" + host
   if G.granular_kc_set(item, user, token, description) != 0
     $stderr.puts "granular-passwd: keychain write failed"
     return 1
@@ -396,7 +406,8 @@ program = name.start_with?(SELF_PREFIX) ? name[SELF_PREFIX.length..-1] : ""
 USAGE = [
   "usage: granular-git [-v] <get|store|erase>",
   "       granular-daemon [-v]",
-  "       granular-passwd [-v] <profile> <host> [description]"
+  "       granular-passwd [-v] <profile> <host> [description]",
+  "       granular-passwd [-v] --message <profile> <host> <description>"
 ]
 if args.length == 1 && (args[0] == "-h" || args[0] == "--help") && program != "git"
   USAGE.each { |l| puts l }
@@ -404,8 +415,10 @@ if args.length == 1 && (args[0] == "-h" || args[0] == "--help") && program != "g
 end
 if program == "git" && args.length == 1
   exit git_helper(args[0])
+elsif program == "passwd" && args.length == 4 && args[0] == "--message"
+  exit passwd(args[1], args[2], args[3], true, verbose)
 elsif program == "passwd" && (args.length == 2 || args.length == 3)
-  exit passwd(args[0], args[1], args.length == 3 ? args[2] : "", verbose)
+  exit passwd(args[0], args[1], args.length == 3 ? args[2] : "", false, verbose)
 elsif program == "daemon" && args.length == 0
   exit daemon(verbose)
 end
