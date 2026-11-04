@@ -29,11 +29,16 @@ push_says_no_access() { git -C "$repo" "${helper[@]}" push --dry-run 2>&1 | grep
 gh_reads() { gh api -i user | head -1 | grep -q ' 200'; }
 gh_token_is_not_classic() { ! gh api -i user | grep -qi '^x-oauth-scopes:.*repo'; }
 
+passwd_help() { "$bin/granular-passwd" -h | grep -q '^usage:'; }
+daemon_help() { "$bin/granular-daemon" --help | grep -q '^usage:'; }
+
 echo "read-only profile ($repo)"
 check "fetch works" fetch_works
 check "push is refused" push_refused
 check "push says write access is not granted" push_says_no_access
 check "gh can read" gh_reads
 check "gh holds a token without the repo scope" gh_token_is_not_classic
+check "granular-passwd -h prints usage" passwd_help
+check "granular-daemon --help prints usage" daemon_help
 
 [ "$fails" -eq 0 ]
