@@ -35,6 +35,7 @@ SHELLS = ["sh", "bash", "zsh", "fish", "dash", "ksh", "tcsh"]
 APP_NAMES = ["claude", "Claude"]
 APP_PROFILES = ["ro", "ro"]
 DEFAULT_PROFILE = "rw"
+$default_profile = DEFAULT_PROFILE
 # git and gh ask granular-daemon. true: with no daemon they give no token. false: they decide in their own process.
 REQUIRE_DAEMON = false
 # The keychain file in ~/Library/Keychains that holds the logins.
@@ -221,7 +222,7 @@ def profile_for(pid, pids, starts, states)
   if shell != -1 && node_index(pids, shell) < 0
     claim_slot(pids, starts, states, shell)
   end
-  DEFAULT_PROFILE
+  $default_profile
 end
 
 # The whole chain on one line, outermost first and without launchd: "login > zsh [2] > claude [1] > git".
@@ -259,6 +260,7 @@ end
 def show_nodes(pids, starts, states)
   scan_claudes(pids, starts, states)
   home = ENV["HOME"]
+  $stderr.puts "  0: default #{$default_profile}"
   shown = 0
   i = 0
   while i < pids.length
@@ -277,6 +279,9 @@ end
 # A slot number flips that claude between ro and rw. Anything else lists them.
 def node_command(line, pids, starts, states)
   scan_claudes(pids, starts, states)
+  if line.strip == "0"
+    $default_profile = $default_profile == "rw" ? "ro" : "rw"
+  end
   n = line.to_i
   if n >= 1 && n <= pids.length && pids[n - 1] != 0
     states[n - 1] = profile_for(pids[n - 1], pids, starts, states) == "rw" ? "ro" : "rw"
@@ -300,7 +305,7 @@ def daemon(verbose)
   pids = [0, 0, 0, 0, 0, 0, 0, 0, 0]
   starts = ["", "", "", "", "", "", "", "", ""]
   states = ["", "", "", "", "", "", "", "", ""]
-  $stderr.puts "granular-daemon: type a slot number (1-9) and Enter to flip it between ro and rw. Enter alone lists the slots."
+  $stderr.puts "granular-daemon: type a slot number (0-9) and Enter to flip it between ro and rw. 0 is the default for any process without a slot. Enter alone lists the slots."
   show_nodes(pids, starts, states)
   while true
     fd = G.granular_accept_or_enter(listener)
