@@ -6,7 +6,7 @@ module G
   ffi_func :granular_vault,       [:str],         :int
   ffi_func :granular_vault_create, [:str],        :int
   ffi_func :granular_kc_login,    [:str, :str],   :str
-  ffi_func :granular_kc_set,      [:str, :str, :str], :int
+  ffi_func :granular_kc_set,      [:str, :str, :str, :str], :int
   ffi_func :granular_read_secret, [:str],         :str
   ffi_func :granular_private_dir, [:str],         :int
   ffi_func :granular_listen,      [:str],         :int
@@ -115,10 +115,11 @@ def git_helper(action)
 
   reply = token_reply(host, user)
   login = login_parts(reply)
-  if login.length != 2
+  if login.length != 3
     $stderr.puts "granular-git: #{reply == "" ? "no reply from daemon" : reply}"
     return 1
   end
+  $stderr.puts "granular: " + login[2] unless login[2] == ""
   puts "username=#{login[0]}"
   puts "password=#{login[1]}"
   0
@@ -129,10 +130,12 @@ def request_for(host, user)
   user == "" ? "get " + host : "get " + host + " " + user
 end
 
-# ["<user>", "<token>"] from an "ok <user> <token>" reply, [] for anything else.
+# ["<user>", "<token>", "<description>"] from an "ok <user> <token> <description words>" reply, with ""
+# for no description, and [] for anything else.
 def login_parts(reply)
   words = reply.split(" ")
-  words.length == 3 && words[0] == "ok" ? words[1..2] : []
+  return [] unless words.length >= 3 && words[0] == "ok"
+  [words[1], words[2], words.length > 3 ? words[3..-1].join(" ") : ""]
 end
 
 def reply_for(request, profile)
@@ -325,7 +328,7 @@ def gh_wrapper
   end
   reply = token_reply("github.com", "")
   login = login_parts(reply)
-  if login.length != 2
+  if login.length != 3
     $stderr.puts "gh: #{reply == "" ? "no reply from daemon" : reply}"
     return 1
   end
@@ -346,7 +349,7 @@ def ensure_vault
   true
 end
 
-def passwd(profile, host, verbose)
+def passwd(profile, host, description, verbose)
   if locked_above(G.getpid, verbose) != 0
     $stderr.puts "granular-passwd: refusing to run under Claude or an unknown caller"
     return 1
@@ -369,11 +372,11 @@ def passwd(profile, host, verbose)
   end
 
   item = KEYCHAIN_PREFIX + profile + ":" + host
-  if G.granular_kc_set(item, user, token) != 0
+  if G.granular_kc_set(item, user, token, description) != 0
     $stderr.puts "granular-passwd: keychain write failed"
     return 1
   end
-  if G.granular_kc_login(item, user) != user + " " + token
+  if G.granular_kc_login(item, user) != user + " " + token + (description == "" ? "" : " " + description)
     $stderr.puts "granular-passwd: stored value did not read back"
     return 1
   end
@@ -392,12 +395,12 @@ end
 program = name.start_with?(SELF_PREFIX) ? name[SELF_PREFIX.length..-1] : ""
 if program == "git" && args.length == 1
   exit git_helper(args[0])
-elsif program == "passwd" && args.length == 2
-  exit passwd(args[0], args[1], verbose)
+elsif program == "passwd" && (args.length == 2 || args.length == 3)
+  exit passwd(args[0], args[1], args.length == 3 ? args[2] : "", verbose)
 elsif program == "daemon" && args.length == 0
   exit daemon(verbose)
 end
 $stderr.puts "usage: granular-git [-v] <get|store|erase>"
 $stderr.puts "       granular-daemon [-v]"
-$stderr.puts "       granular-passwd [-v] <profile> <host>"
+$stderr.puts "       granular-passwd [-v] <profile> <host> [description]"
 exit 2
