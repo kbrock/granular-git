@@ -23,8 +23,9 @@ int granular_vault(const char *path);
  * and through sleep. Returns 0 on success. */
 int granular_vault_create(const char *path);
 
-/* The first item of service, narrowed to account if account is not empty, as "<account> <secret>"
- * from a static buffer, or "" if there is none or the account holds a space. */
+/* The first item of service, narrowed to account if account is not empty, as "<account> <secret>" and
+ * " <description>" when it has one, from a static buffer, or "" if there is none or the account holds a
+ * space. */
 const char *granular_kc_login(const char *service, const char *account);
 
 /* Reads a line from the tty with no echo into a static buffer, or "" if there
@@ -68,7 +69,7 @@ int granular_peer_pid(int fd);
 const char *granular_read_line(int fd);
 int granular_write_line(int fd, const char *s);   /* 0 on success */
 
-/* Creates or updates the item. Returns 0 on success. */
-int granular_kc_set(const char *service, const char *account, const char *secret);
+/* Creates or updates the item, with description stored on it ("" for none). Returns 0 on success. */
+int granular_kc_set(const char *service, const char *account, const char *secret, const char *description);
 
 #endif

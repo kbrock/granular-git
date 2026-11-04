@@ -212,14 +212,16 @@ static CFMutableDictionaryRef item_query(const char *service, const char *accoun
 	return q;
 }
 
-int granular_kc_set(const char *service, const char *account, const char *secret)
+int granular_kc_set(const char *service, const char *account, const char *secret, const char *description)
 {
 	CFMutableDictionaryRef q = item_query(service, account);
 	CFMutableDictionaryRef attrs = CFDictionaryCreateMutableCopy(kCFAllocatorDefault, 0, q);
 	CFDataRef data = CFDataCreate(kCFAllocatorDefault, (const UInt8 *)secret, strlen(secret));
+	CFStringRef desc = CFStringCreateWithCString(kCFAllocatorDefault, description, kCFStringEncodingUTF8);
 	OSStatus st;
 
 	CFDictionarySetValue(attrs, kSecValueData, data);
+	CFDictionarySetValue(attrs, kSecAttrDescription, desc);
 	if (vault) {
 		CFDictionaryRemoveValue(attrs, kSecMatchSearchList);
 		CFDictionarySetValue(attrs, kSecUseKeychain, vault);
@@ -229,9 +231,11 @@ int granular_kc_set(const char *service, const char *account, const char *secret
 		CFMutableDictionaryRef change = new_dictionary();
 
 		CFDictionarySetValue(change, kSecValueData, data);
+		CFDictionarySetValue(change, kSecAttrDescription, desc);
 		st = SecItemUpdate(q, change);
 		CFRelease(change);
 	}
+	CFRelease(desc);
 	CFRelease(data);
 	CFRelease(attrs);
 	CFRelease(q);
@@ -251,7 +255,9 @@ const char *granular_kc_login(const char *service, const char *account)
 	if (SecItemCopyMatching(q, (CFTypeRef *)&item) == errSecSuccess) {
 		CFStringRef acct = CFDictionaryGetValue(item, kSecAttrAccount);
 		CFDataRef data = CFDictionaryGetValue(item, kSecValueData);
+		CFStringRef desc = CFDictionaryGetValue(item, kSecAttrDescription);
 		char user[256];
+		char note[256];
 
 		if (acct && data &&
 		    CFStringGetCString(acct, user, sizeof(user), kCFStringEncodingUTF8) &&
@@ -263,6 +269,11 @@ const char *granular_kc_login(const char *service, const char *account)
 			buf[n] = ' ';
 			memcpy(buf + n + 1, CFDataGetBytePtr(data), CFDataGetLength(data));
 			buf[n + 1 + CFDataGetLength(data)] = '\0';
+			if (desc && CFStringGetCString(desc, note, sizeof(note), kCFStringEncodingUTF8) && *note &&
+			    strlen(buf) + 1 + strlen(note) < sizeof(buf)) {
+				strcat(buf, " ");
+				strcat(buf, note);
+			}
 		}
 		CFRelease(item);
 	}
