@@ -354,7 +354,7 @@ def ensure_vault
   true
 end
 
-def passwd(profile, host, description, keep_login, verbose)
+def passwd(profile, host, description, keep_login, keep_description, verbose)
   if locked_above(G.getpid, verbose) != 0
     $stderr.puts "granular-passwd: refusing to run under Claude or an unknown caller"
     return 1
@@ -373,6 +373,7 @@ def passwd(profile, host, description, keep_login, verbose)
     end
     user = words[0]
     token = words[1]
+    description = words.length > 2 ? words[2..-1].join(" ") : "" if keep_description
   else
     $stderr.print "Username: "
     user = ($stdin.gets || "").chomp
@@ -412,7 +413,7 @@ USAGE = [
   "usage: granular-git [-v] <get|store|erase>",
   "       granular-daemon [-v]",
   "       granular-passwd [-v] <profile> <host> [description]",
-  "       granular-passwd [-v] --message <profile> <host> <description>"
+  "       granular-passwd [-v] --rekey <profile> <host> [description]"
 ]
 if args.length == 1 && (args[0] == "-h" || args[0] == "--help") && program != "git"
   USAGE.each { |l| puts l }
@@ -420,10 +421,10 @@ if args.length == 1 && (args[0] == "-h" || args[0] == "--help") && program != "g
 end
 if program == "git" && args.length == 1
   exit git_helper(args[0])
-elsif program == "passwd" && args.length == 4 && args[0] == "--message"
-  exit passwd(args[1], args[2], args[3], true, verbose)
+elsif program == "passwd" && (args.length == 3 || args.length == 4) && args[0] == "--rekey"
+  exit passwd(args[1], args[2], args.length == 4 ? args[3] : "", true, args.length == 3, verbose)
 elsif program == "passwd" && (args.length == 2 || args.length == 3)
-  exit passwd(args[0], args[1], args.length == 3 ? args[2] : "", false, verbose)
+  exit passwd(args[0], args[1], args.length == 3 ? args[2] : "", false, false, verbose)
 elsif program == "daemon" && args.length == 0
   exit daemon(verbose)
 end
