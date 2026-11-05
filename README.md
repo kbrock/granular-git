@@ -40,7 +40,7 @@ Spinel (Ruby ahead-of-time compiler that produces a standalone native binary by 
 
 ### Daemon
 
-- `granular-daemon` listens on `~/.granular/sock` (directory 0700, socket 0600). Request `get <host> [user]`, reply `ok <user> <token>` or `deny <reason>`. Only `github.com` is a known host.
+- `granular-daemon` listens on `~/.granular/sock` (directory 0700, socket 0600). Request `get <host> [user]`, reply `ok <user> <token> [description]` or `deny <reason>`. The description is the profile's message, which the client prints on stderr. Only `github.com` is a known host.
 - `granular-git` and the `gh` wrapper ask the daemon first. With no daemon they decide in their own process, unless `REQUIRE_DAEMON` is `true`. A timeout or a non-`ok` reply exits 1 with no token.
 - The daemon replies `deny vault locked` when the vault is locked.
 
@@ -53,7 +53,7 @@ A request walks up from the caller. The first process with a profile of its own 
 
 Seeded rows: the `claude` CLI and `Claude.app` map to `ro`. Default maps to `rw`. A chain that does not reach launchd gets `ro`. The table lives in the daemon's memory only; a daemon restart returns it to the seed.
 
-A profile is a bundle of credentials (GitHub, Gmail and others). A tool takes the credential of its own class from the profile it is given.
+A profile holds the credentials for one target (GitHub, Gmail and others). A tool takes the credential of its own class from the profile it is given.
 
 The Claude Code hook (1C) can return at once for commands that do not mention git, `gh` or `psql`.
 
@@ -86,7 +86,7 @@ Not started. A Claude Code hook (not a Git hook) runs before a shell command, ca
 
 ### Per-session overrides (1D)
 
-Not started. Rules that differ per Claude Code session, using the sub-agent ID and other environment parameters from the hook input. The 1C command list is partitioned into about four tiers so groups can be enabled together. Examples:
+Not started. `granular-trust` sets the profile of a process by pid, so each Claude Code session carries a profile of its own, and the row ends when the process exits. Setting a profile is a request that the caller's profile allows or denies, and Claude's profile denies it. Rules can also differ per session through the sub-agent ID in the hook input. Examples:
 - One session may merge into master while a concurrent session may only merge into branches.
 - Per-project config decides whether Claude commits to master or only to branches.
 - Committing to master is separated from committing to a branch, and from merging master into a branch.
@@ -136,13 +136,15 @@ Type these in your own terminal.
    - `ro`: fine-grained, owner you, All repositories, with Contents, Pull requests and Issues read-only. Claude gets this one.
    - `rw`: classic with the `repo` scope, plus `workflow`, `gist` or `read:org` if you use them. It reaches every repo your account can push to. A fine-grained token has one owner and cannot reach repos owned by another user.
 3. Store each in the vault. The first run creates the vault, and a system dialog asks for its password. Enter your GitHub username, then paste the token. The command refuses to run under Claude.
-   `granular-passwd ro github.com`
+   `granular-passwd ro github.com "<message>"`
    `granular-passwd rw github.com`
+   The optional message is stored on the item and printed on stderr whenever the helper serves that profile. Say that a push is not allowed and to ask you. `granular-passwd -h` lists the forms.
 4. Point Git at the helper in `~/.gitconfig`, with an absolute path:
    `[credential]`, then `helper =` (empty, clears every earlier helper), then `helper = /usr/local/bin/granular-git`
    Remove any other `credential.helper` lines from your config files.
 5. Take brew's `gh` off PATH: `rm /opt/homebrew/bin/gh`
 6. Remove the credential `gh` holds itself: `gh auth logout -h github.com`
+7. Check that a push is refused under `ro` and works under `rw`. In a clone of a private repo, run `git push --dry-run`, or push a new branch. Under `ro` you see the message and a 403 (`Write access to repository not granted`). Under `rw` the push goes through. `git ls-remote` also reaches the helper, on a private repo only: a public repo never asks for credentials.
 
 Git and `gh` now decide in their own process: a `claude` above them gets `ro`, anyone else gets `rw`.
 - You gain: Claude's pushes fail and yours work, with nothing else running.
@@ -158,6 +160,7 @@ Git and `gh` now ask the daemon over `~/.granular/sock`, and only the daemon rea
 - The daemon decides by the profile table (see Mechanism). The first process with a profile decides: a slot you flipped, else a table row (seeded for `claude` and `Claude.app`). With none the caller gets `DEFAULT_PROFILE` (`rw`).
 - Slots 1 to 9 go to every matched process the daemon sees and to the outermost shell above it.
 - Type a slot number and Enter in the daemon's tab to flip that process between `ro` and `rw`. Enter alone lists the slots with their pid and working directory. The slot list shows a process only after it has made a request or the scan has found a `claude` by name.
+- Type `0` and Enter to flip the default (`DEFAULT_PROFILE`) between `ro` and `rw`. The default applies to a process with no slot and no table row.
 - A slot is freed when its process exits, and its number is reused.
 
 - You gain: flip one Claude session to `rw` for a task and flip it back, and a line for every request.
@@ -171,6 +174,7 @@ The first `granular-passwd` run creates it, through a system dialog that asks fo
 
 - It relocks after a day and stays unlocked through sleep. Unlock it from any terminal: `security unlock-keychain ~/Library/Keychains/granular.keychain-db`
 - Each login is an item: service `granular:<profile>:<host>`, account the username, secret the token. Git and `gh` share them.
+- Rekey an item: `granular-passwd --rekey <profile> <host> [description]` reads the stored login, deletes the item and adds it again from the current build. Run it when a vault item prompts after a rebuild or a change of signing identity, because an item's access list names the build that stored it. It also changes the message with no token to paste: a given description replaces the old one, `""` clears it, and none keeps it.
 
 - You gain: the tokens sit apart from the rest of your login keychain.
 - You lose: a second password, and a locked vault gives no token until you unlock it.
