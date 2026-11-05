@@ -226,15 +226,8 @@ int granular_kc_set(const char *service, const char *account, const char *secret
 		CFDictionaryRemoveValue(attrs, kSecMatchSearchList);
 		CFDictionarySetValue(attrs, kSecUseKeychain, vault);
 	}
+	SecItemDelete(q);
 	st = SecItemAdd(attrs, NULL);
-	if (st == errSecDuplicateItem) {
-		CFMutableDictionaryRef change = new_dictionary();
-
-		CFDictionarySetValue(change, kSecValueData, data);
-		CFDictionarySetValue(change, kSecAttrDescription, desc);
-		st = SecItemUpdate(q, change);
-		CFRelease(change);
-	}
 	CFRelease(desc);
 	CFRelease(data);
 	CFRelease(attrs);

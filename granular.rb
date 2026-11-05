@@ -354,39 +354,58 @@ def ensure_vault
   true
 end
 
-def passwd(profile, host, description, keep_login, verbose)
+# Checks shared by every granular-passwd form: not under Claude, a known host, the vault is there.
+def passwd_ready(host, verbose)
   if locked_above(G.getpid, verbose) != 0
     $stderr.puts "granular-passwd: refusing to run under Claude or an unknown caller"
-    return 1
+    return false
   end
   unless HOSTS.include?(host)
     $stderr.puts "granular-passwd: unknown host #{host}"
+    return false
+  end
+  ensure_vault
+end
+
+# granular-passwd <profile> <host> [description]: asks for a username and a token.
+def passwd_store(args, verbose)
+  profile = args[0]
+  host = args[1]
+  description = args.length == 3 ? args[2] : ""
+  return 1 unless passwd_ready(host, verbose)
+  $stderr.print "Username: "
+  user = ($stdin.gets || "").chomp
+  if user == "" || user.include?(" ")
+    $stderr.puts "granular-passwd: username must be non-empty with no spaces"
     return 1
   end
-  return 1 unless ensure_vault
-  item = KEYCHAIN_PREFIX + profile + ":" + host
-  if keep_login
-    words = G.granular_kc_login(item, "").split(" ")
-    if words.length < 2
-      $stderr.puts "granular-passwd: no #{profile} item for #{host}"
-      return 1
-    end
-    user = words[0]
-    token = words[1]
-  else
-    $stderr.print "Username: "
-    user = ($stdin.gets || "").chomp
-    if user == "" || user.include?(" ")
-      $stderr.puts "granular-passwd: username must be non-empty with no spaces"
-      return 1
-    end
-    token = G.granular_read_secret("Token: ")
-    if token == ""
-      $stderr.puts "granular-passwd: no token read"
-      return 1
-    end
+  token = G.granular_read_secret("Token: ")
+  if token == ""
+    $stderr.puts "granular-passwd: no token read"
+    return 1
   end
+  passwd_write(KEYCHAIN_PREFIX + profile + ":" + host, user, token, description, verbose)
+end
 
+# granular-passwd --rekey <profile> <host> [description]: stores the item again with its own user and
+# token, so its access list names this build. Without a description the old one is kept.
+def passwd_rekey(args, verbose)
+  profile = args[1]
+  host = args[2]
+  return 1 unless passwd_ready(host, verbose)
+  item = KEYCHAIN_PREFIX + profile + ":" + host
+  words = G.granular_kc_login(item, "").split(" ")
+  if words.length < 2
+    $stderr.puts "granular-passwd: no #{profile} item for #{host}"
+    return 1
+  end
+  description = words.length > 2 ? words[2..-1].join(" ") : ""
+  description = args[3] if args.length == 4
+  passwd_write(item, words[0], words[1], description, verbose)
+end
+
+# Stores the item and reads it back.
+def passwd_write(item, user, token, description, verbose)
   if G.granular_kc_set(item, user, token, description) != 0
     $stderr.puts "granular-passwd: keychain write failed"
     return 1
@@ -412,7 +431,7 @@ USAGE = [
   "usage: granular-git [-v] <get|store|erase>",
   "       granular-daemon [-v]",
   "       granular-passwd [-v] <profile> <host> [description]",
-  "       granular-passwd [-v] --message <profile> <host> <description>"
+  "       granular-passwd [-v] --rekey <profile> <host> [description]"
 ]
 if args.length == 1 && (args[0] == "-h" || args[0] == "--help") && program != "git"
   USAGE.each { |l| puts l }
@@ -420,10 +439,10 @@ if args.length == 1 && (args[0] == "-h" || args[0] == "--help") && program != "g
 end
 if program == "git" && args.length == 1
   exit git_helper(args[0])
-elsif program == "passwd" && args.length == 4 && args[0] == "--message"
-  exit passwd(args[1], args[2], args[3], true, verbose)
+elsif program == "passwd" && (args.length == 3 || args.length == 4) && args[0] == "--rekey"
+  exit passwd_rekey(args, verbose)
 elsif program == "passwd" && (args.length == 2 || args.length == 3)
-  exit passwd(args[0], args[1], args.length == 3 ? args[2] : "", false, verbose)
+  exit passwd_store(args, verbose)
 elsif program == "daemon" && args.length == 0
   exit daemon(verbose)
 end
