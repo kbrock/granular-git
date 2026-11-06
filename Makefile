@@ -3,10 +3,18 @@ BUILD  = build
 
 all: link
 
-link: $(BUILD)/granular
-	ln -sf granular $(BUILD)/granular-git
-	ln -sf granular $(BUILD)/granular-passwd
-	ln -sf granular $(BUILD)/granular-daemon
+LINKS = granular-git granular-passwd granular-daemon
+
+# link(target, source): the target is a symlink to the source's file name. It is made once, when the
+# target is missing, and after the source exists.
+define link
+$(1): | $(2)
+	ln -s $(notdir $(2)) $(1)
+endef
+
+$(foreach n,$(LINKS),$(eval $(call link,$(BUILD)/$(n),$(BUILD)/granular)))
+
+link: $(BUILD)/granular $(addprefix $(BUILD)/,$(LINKS))
 
 $(BUILD)/granular.o: granular.c granular.h
 	mkdir -p $(BUILD)
@@ -21,9 +29,12 @@ $(BUILD)/granular: granular.rb $(BUILD)/granular.o
 
 PREFIX = /usr/local/bin
 
-install: link
-	install -m 755 $(BUILD)/granular $(PREFIX)/granular
-	for n in granular-git granular-passwd granular-daemon gh; do ln -sf granular $(PREFIX)/$$n; done
+$(PREFIX)/granular: $(BUILD)/granular
+	install -m 755 $< $@
+
+$(foreach n,$(LINKS) gh,$(eval $(call link,$(PREFIX)/$(n),$(PREFIX)/granular)))
+
+install: $(PREFIX)/granular $(addprefix $(PREFIX)/,$(LINKS) gh)
 
 uninstall:
 	for n in granular-git granular-passwd granular-daemon gh; do \
