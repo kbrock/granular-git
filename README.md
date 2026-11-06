@@ -125,7 +125,7 @@ What to press:
 - Allow or Always Allow a prompt that names `granular` and `granular:ro:github.com` or `granular:rw:github.com`.
 - Deny a prompt that names anything else, such as `security` or `nc`. Something else is asking for a token.
 
-A prompt appears once per binary per item (`ro` and `rw` are two items), and again after each rebuild. Build once, store the tokens, then use it.
+A prompt appears once per binary per item (`ro` and `rw` are two items). A signed rebuild keeps the approval. A new signing identity brings the prompts back until you rekey.
 
 ## 5. Basic mode, no daemon
 
@@ -264,7 +264,7 @@ Checks (PASS or FAIL for each; the script exits 1 if any fails):
 - The `rw` token is a classic `repo` token, so a slot flipped to `rw` gives Claude every repo the account can push to.
 - The Spinel build holds the token in a Ruby string and does not wipe it.
 - A Keychain dialog blocks the single-threaded daemon until it is answered. The client waits 60 seconds for a reply. The daemon waits 2 seconds for a request.
-- Each rebuild changes the binary and prompts again once per item. `brew upgrade` does the same.
+- A rebuild signed with the same identity keeps the approvals. `brew upgrade` changes the binary and prompts again once per item.
 - Same-user processes, including Claude, can kill the daemon or write under `~/.granular`.
 - A Claude process that connects to the socket itself gets `ro` by the same walk.
 - Claude could type into the daemon's terminal to flip its own slot.
@@ -285,7 +285,7 @@ Checks (PASS or FAIL for each; the script exits 1 if any fails):
 ## 15. Developer
 
 - Compile: `make link`. Install: `make install`. Remove: `make uninstall`. Clean: `make clean`.
-- Run all three tests after every build. Each rebuild changes the binary, so the Keychain prompts come back.
+- Run all three tests after every build. A rebuild signed with the same identity does not prompt again.
 - Switches at the top of `granular.rb`. Rebuild after changing one.
   - `VAULT`: the keychain file in `~/Library/Keychains`.
   - `REQUIRE_DAEMON`: default `false`. `true` makes Git and `gh` give no token when the daemon is not running.
