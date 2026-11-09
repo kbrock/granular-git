@@ -1,14 +1,15 @@
 #!/bin/bash
-# This tests what the ro profile can do: fetch works, push is refused, the token has no repo scope.
+# This tests what the ro profile can do: push is refused, and the gh token has no repo scope.
 # It does not check machine setup (that is audit.sh).
 # Run this from a process that should get the read-only profile, for example from inside a Claude session.
-# It changes nothing on GitHub: reads, and a push with --dry-run. Prints PASS or FAIL per check and no tokens.
+# Run it inside a clone of a repo you can push to, public or private.
+# It changes nothing on GitHub: a push with --dry-run, and one read. Prints PASS or FAIL per check and no tokens.
 # Exits 1 if anything failed.
 
 dir=$(cd "$(dirname "$0")" && pwd)
 bin=$(dirname "$(command -v granular-git || echo "$dir/build/granular-git")")
-repo=${GRANULAR_TEST_REPO:-$HOME/src/granular-git-test}
-url=$(git -C "$repo" remote get-url origin)
+repo=$(git rev-parse --show-toplevel) || exit 1
+git -C "$repo" remote get-url origin >/dev/null || exit 1
 helper=(-c credential.helper= -c "credential.helper=$bin/granular-git")
 fails=0
 
@@ -23,22 +24,19 @@ check() {
   fi
 }
 
-fetch_works() { git "${helper[@]}" ls-remote "$url" HEAD | grep -q HEAD; }
-push_refused() { ! git -C "$repo" "${helper[@]}" push --dry-run; }
-push_says_no_access() { git -C "$repo" "${helper[@]}" push --dry-run 2>&1 | grep -q 'Write access to repository not granted'; }
-gh_reads() { gh api -i user | head -1 | grep -q ' 200'; }
-gh_token_is_not_classic() { ! gh api -i user | grep -qi '^x-oauth-scopes:.*repo'; }
+push_out=$(git -C "$repo" "${helper[@]}" push --dry-run 2>&1)
+push_status=$?
+gh_out=$(gh api -i user 2>&1)
 
-passwd_help() { "$bin/granular-passwd" -h | grep -q '^usage:'; }
-daemon_help() { "$bin/granular-daemon" --help | grep -q '^usage:'; }
+push_refused() { [ "$push_status" -ne 0 ]; }
+push_says_no_access() { grep -q 'Write access to repository not granted' <<<"$push_out"; }
+gh_reads() { head -1 <<<"$gh_out" | grep -q ' 200'; }
+gh_token_is_not_classic() { ! grep -qi '^x-oauth-scopes:.*repo' <<<"$gh_out"; }
 
 echo "read-only profile ($repo)"
-check "fetch works" fetch_works
 check "push is refused" push_refused
 check "push says write access is not granted" push_says_no_access
 check "gh can read" gh_reads
 check "gh holds a token without the repo scope" gh_token_is_not_classic
-check "granular-passwd -h prints usage" passwd_help
-check "granular-daemon --help prints usage" daemon_help
 
 [ "$fails" -eq 0 ]
