@@ -1,16 +1,14 @@
 #!/bin/bash
 # This ensures the machine is set up correctly: helper chain, no stray credential stores, vault and
 # items, gh link order. It calls the tool only to confirm it is wired in. It does not test what ro or rw
-# can do (that is test-ro.sh and test-rw.sh).
+# can do (that is granular-test-ro and granular-test-rw).
 # Read-only. Run it from your own terminal. Each failure prints the command that fixes it. Exits 1 if
 # anything failed.
 
-dir=$(cd "$(dirname "$0")" && pwd)
-bin=$(dirname "$(command -v granular-git || echo "$dir/build/granular-git")")
+helper=$(command -v granular-git)
 req='protocol=https\nhost=github.com\n\n'
-real_gh=$(sed -n 's/^REAL_GH = "\(.*\)"$/\1/p' "$dir/granular.rb")
-vault=$(sed -n 's/^VAULT = "\(.*\)"$/\1/p' "$dir/granular.rb")
-vault_path=$HOME/Library/Keychains/$vault
+real_gh=$(brew --prefix gh 2>/dev/null)/bin/gh
+vault_path=$HOME/Library/Keychains/granular.keychain-db
 fails=0
 
 check() {
@@ -28,10 +26,10 @@ check() {
 helper_chain() {
   local helpers
   helpers=$(cd / && git config --get-all credential.helper)
-  [ "$(echo "$helpers" | tail -1)" = "$bin/granular-git" ] && echo "$helpers" | grep -qx ''
+  [ "$(echo "$helpers" | tail -1)" = "$helper" ] && echo "$helpers" | grep -qx ''
 }
 effective_helpers() { (cd / && git config --get-all credential.helper) | awk '$0 == "" { n = 0; next } { h[++n] = $0 } END { for (i = 1; i <= n; i++) print h[i] }'; }
-only_helper() { [ "$(effective_helpers)" = "$bin/granular-git" ]; }
+only_helper() { [ "$(effective_helpers)" = "$helper" ]; }
 no_url_helpers() { [ -z "$(cd / && git config --get-regexp '^credential\..+\.helper$')" ]; }
 no_netrc() { ! grep -qs github.com "$HOME/.netrc"; }
 no_git_credentials() { ! grep -qs github.com "$HOME/.git-credentials" "$HOME/.config/git/credentials"; }
@@ -55,20 +53,17 @@ no_osx_item() { ! security find-internet-password -s github.com; }
 osx_returns_nothing() { [ -z "$(printf "$req" | git credential-osxkeychain get 2>/dev/null)" ]; }
 
 no_gh_item() { ! security find-generic-password -s gh:github.com; }
-gh_has_no_token() { [ -n "$real_gh" ] && ! env -u GH_TOKEN -u GITHUB_TOKEN "$real_gh" auth token; }
+gh_has_no_token() { [ -x "$real_gh" ] && ! env -u GH_TOKEN -u GITHUB_TOKEN "$real_gh" auth token; }
 no_token_env() { ! env | grep -qE '^(GH|GITHUB)_TOKEN='; }
 no_hosts_token() { ! grep -qs oauth_token "$HOME/.config/gh/hosts.yml"; }
-path_dirs() { IFS=: read -ra dirs <<<"$PATH"; }
-bin_on_path() { local dirs d; path_dirs; for d in "${dirs[@]}"; do [ "$d" = "$bin" ] && return 0; done; return 1; }
-first_gh() { [ "$(type -ap gh | head -1)" = "$bin/gh" ]; }
+helper_on_path() { [ -n "$helper" ]; }
+first_gh() { [ "$(readlink -f "$(command -v gh)")" = "$(readlink -f "$helper")" ]; }
 gh_authenticated() { gh api user; }
 
 echo "git"
 check "credential.helper ends with an empty entry, then granular-git" \
-  "in ~/.gitconfig: 'helper =' (empty), then 'helper = $bin/granular-git'; remove other credential.helper lines" helper_chain
-if grep -q '^REQUIRE_DAEMON = true' "$dir/granular.rb"; then
-  check "daemon answers 'get github.com'" "start it: $bin/granular-daemon" daemon_answers
-elif daemon_answers >/dev/null 2>&1; then
+  "in ~/.gitconfig: 'helper =' (empty), then 'helper = $helper'; remove other credential.helper lines" helper_chain
+if daemon_answers >/dev/null 2>&1; then
   echo "PASS  daemon answers 'get github.com'"
 else
   echo "NOTE  daemon not running: no slots, and a claude above the caller gets ro by name"
@@ -83,9 +78,9 @@ check "~/.netrc has no github.com entry" "remove the github.com lines from ~/.ne
 check "no stored git credentials for github.com" "remove github.com from ~/.git-credentials and ~/.config/git/credentials" no_git_credentials
 
 echo "vault"
-check "the vault file exists ($vault_path)" "run $bin/granular-passwd ro github.com, which creates it" vault_exists
-check "granular:ro:github.com is in the vault" "$bin/granular-passwd ro github.com" in_vault ro
-check "granular:rw:github.com is in the vault" "$bin/granular-passwd rw github.com" in_vault rw
+check "the vault file exists ($vault_path)" "run granular-passwd ro github.com, which creates it" vault_exists
+check "granular:ro:github.com is in the vault" "granular-passwd ro github.com" in_vault ro
+check "granular:rw:github.com is in the vault" "granular-passwd rw github.com" in_vault rw
 
 echo "osxkeychain"
 check "no saved github.com item in the keychain" \
@@ -98,11 +93,9 @@ check "gh keyring item is gone" "gh auth logout -h github.com" no_gh_item
 check "the real gh has no token (gh auth token fails)" "gh auth logout -h github.com" gh_has_no_token
 check "GH_TOKEN and GITHUB_TOKEN are not set" "unset them and remove them from your shell profile" no_token_env
 check "hosts.yml holds no oauth_token" "gh auth logout -h github.com" no_hosts_token
-check "$bin is on PATH" "add $bin to PATH in your shell profile" bin_on_path
-check "the wrapper is the first gh on PATH" "remove or reorder the gh that comes first: type -ap gh" first_gh
-first_gh && [ -n "$(type -ap gh | tail -n +2)" ] &&
-  echo "NOTE  another gh is on PATH after the wrapper: $(type -ap gh | tail -n +2 | tr '\n' ' ')"
-check "gh works through the wrapper" "store logins: $bin/granular-passwd ro github.com and rw github.com" gh_authenticated
+check "granular-git is on PATH" "put granular-git on PATH, for example in /usr/local/bin" helper_on_path
+check "the gh on PATH is the wrapper (a link to granular)" "brew unlink gh, or reorder PATH: type -ap gh" first_gh
+check "gh works through the wrapper" "store logins: granular-passwd ro github.com and rw github.com" gh_authenticated
 
 echo "entries in the vault (information, not a pass or fail)"
 show_entries "vault" "$vault_path"

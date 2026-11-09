@@ -34,12 +34,18 @@ $(PREFIX)/granular: $(BUILD)/granular
 
 $(foreach n,$(LINKS) gh,$(eval $(call link,$(PREFIX)/$(n),$(PREFIX)/granular)))
 
-install: $(PREFIX)/granular $(addprefix $(PREFIX)/,$(LINKS) gh)
+SCRIPTS = granular-audit granular-test-ro granular-test-rw
+
+$(addprefix $(PREFIX)/,$(SCRIPTS)): $(PREFIX)/%: %
+	install -m 755 $< $@
+
+install: $(PREFIX)/granular $(addprefix $(PREFIX)/,$(LINKS) gh $(SCRIPTS))
 
 uninstall:
 	for n in granular-git granular-passwd granular-daemon gh; do \
 		[ "$$(readlink $(PREFIX)/$$n)" = granular ] && rm $(PREFIX)/$$n; done; \
 		rm -f $(PREFIX)/granular
+	rm -f $(addprefix $(PREFIX)/,$(SCRIPTS))
 
 clean:
 	rm -rf $(BUILD)

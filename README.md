@@ -152,13 +152,13 @@ Type these in your own terminal.
     c. In your terminal: `granular-passwd rw github.com`. The item is `granular:rw:github.com`.
     Repos owned by another user are out of reach for this token.
 
-4. Run `./audit.sh`. Both items appear under "vault", with the account name and never a token.
+4. Run `granular-audit`. Both items appear under "vault", with the account name and never a token.
 5. Point Git at the helper in `~/.gitconfig`, with an absolute path:
    `[credential]`, then `helper =` (empty, clears every earlier helper), then `helper = /usr/local/bin/granular-git`
    Remove any other `credential.helper` lines from your config files.
 6. Take brew's `gh` off PATH: `rm /opt/homebrew/bin/gh`
 7. Remove the credential `gh` holds itself: `gh auth logout -h github.com`
-8. Check the profiles with the tests in sections 9 to 11: `./test-rw.sh` in your terminal, `./test-ro.sh` inside a Claude session. They only read and run `git push --dry-run`, so they change nothing on GitHub. They use the test repo from section 9, or any private repo of yours that you can push to, named in `GRANULAR_TEST_REPO`. A public repo never asks for credentials, so it proves nothing.
+8. Check the profiles with the tests in sections 9 to 11: `granular-test-rw` in your terminal, `granular-test-ro` inside a Claude session, both on the test branch from section 9. They only read and run `git push --dry-run`, so they change nothing on GitHub.
 
 Git and `gh` now decide in their own process: a `claude` above them gets `ro`, anyone else gets `rw`.
 - You gain: Claude's pushes fail and yours work, with nothing else running.
@@ -195,81 +195,65 @@ The first `granular-passwd` run creates it, through a system dialog that asks fo
 
 ## 8. Audit
 
-`./audit.sh` asks: is this computer configured correctly? It changes nothing. A failure means the environment is wrong, not the program.
+`granular-audit` asks: is this computer configured correctly? It changes nothing. A failure means the environment is wrong, not the program.
 
 Steps:
 1. Open your own terminal, not Claude.
 2. If you use the daemon, start `granular-daemon` in another tab.
-3. Run `./audit.sh`.
+3. Run `granular-audit`.
 4. For each failure the audit says what went wrong and prints the fix. Apply it, then run the audit again until nothing fails.
 
 Some checks read the vault, so a prompt can appear (see What a prompt is). The script exits 1 if any check fails.
 
-## 9. Test repo (once)
+## 9. Test branch (once)
 
-The tests need a GitHub repo you can push to. Set it up once. The tests look in `~/src/granular-git-test`; `GRANULAR_TEST_REPO` names another path.
+The tests run in the repo you are standing in, on its current branch. Make a branch for them, so they never touch your working branches. The repo needs an `https://github.com` origin, and you need push access.
 
 Steps:
 1. Have the `ro` and `rw` tokens stored in the vault (Basic mode, steps 2 and 3).
-2. Create the repo, either way. Run these in your own terminal, so `gh` gets `rw`.
-   - With `gh`:
-     ```
-     mkdir ~/src/granular-git-test && cd ~/src/granular-git-test
-     git init -b main
-     echo test > README && git add README && git commit -m "first commit"
-     gh repo create granular-git-test --private --source=. --push
-     ```
-   - On github.com: create a private repo named `granular-git-test` with a README, then clone it, with `git` or with `gh`:
-     ```
-     git clone https://github.com/<you>/granular-git-test.git ~/src/granular-git-test
-     gh repo clone <you>/granular-git-test ~/src/granular-git-test
-     ```
-3. Run the three tests below.
+2. Create the branch: `git switch -c granular-test`
+3. In your own terminal, publish it once, so it has an upstream: `git push -u origin granular-test`
+   On a public repo the branch is visible.
+4. Run the tests below from this branch. They run `git push --dry-run` and change nothing on GitHub.
+5. When you are done: `git switch -`, then `git branch -D granular-test` and `git push origin --delete granular-test`
 
-## 10. Test: test-ro.sh
+## 10. Test: granular-test-ro
 
-`./test-ro.sh` asks: does the read-only profile do what we want? It changes nothing on GitHub; the push is a dry run.
+`granular-test-ro` asks: does the read-only profile do what we want? It changes nothing on GitHub; the push is a dry run.
 
 Steps:
-1. Start `claude` in the granular_git directory. A terminal whose slot you flipped to `ro` also works.
-2. Ask Claude to run `./test-ro.sh`.
+1. Start `claude` on the test branch from section 9. A terminal whose slot you flipped to `ro` also works.
+2. Ask Claude to run `granular-test-ro`.
 
 Checks (PASS or FAIL for each; the script exits 1 if any fails):
-- Fetch works.
 - Push is refused.
 - Push says write access is not granted.
 - `gh` can read.
 - The `gh` token has no `repo` scope.
 
-## 11. Test: test-rw.sh
+## 11. Test: granular-test-rw
 
-`./test-rw.sh` asks: does the read-write profile do what we want? It changes nothing on GitHub; the push is a dry run.
+`granular-test-rw` asks: does the read-write profile do what we want? It changes nothing on GitHub; the push is a dry run.
 
 Steps:
-1. Open your own terminal. A Claude session whose slot you flipped to `rw` also works.
-2. Run `./test-rw.sh`.
+1. Open your own terminal on the test branch from section 9. A Claude session whose slot you flipped to `rw` also works.
+2. Run `granular-test-rw`.
 
 Checks (PASS or FAIL for each; the script exits 1 if any fails):
-- Fetch works.
 - Push is accepted.
 - Push is not refused for write access.
 - `gh` can read.
 - The `gh` token has the `repo` scope.
 
-## 12. Test: test-flip.sh
+## 12. Test: flipping
 
-`./test-flip.sh` walks one process from `ro` to `rw`. It commits a `timefile` to the test repo and pushes it to GitHub once the process is `rw`.
+A flip is checked by running the two tests either side of it, in one Claude session on the test branch from section 9. A Claude session starts at `ro`. For a terminal, flip its slot to `ro` first. The flip needs the daemon.
 
 Steps:
-1. Start the daemon. Run the script from the process you will flip: a Claude session or a terminal.
-2. The script asks you to make sure this process is `ro` in the daemon's tab. Do that, then press Enter.
-3. The script appends the time to `timefile`, runs `git add timefile`, `git commit -m "updated time"` and `git push`.
-4. The script asks you to flip this process to `rw`. Do that in the daemon's tab, then press Enter.
-5. The script runs `git push` again.
-
-Checks (PASS or FAIL for each; the script exits 1 if any fails):
-- Push is refused at `ro`.
-- Push works at `rw`.
+1. Start `granular-daemon` in another tab. In the session, run `granular-test-ro`. It passes.
+2. In the daemon's tab, type the session's slot number and press Enter. The session is now `rw`.
+3. In the session, run `granular-test-rw`. It passes.
+4. Type the slot number again. The session is `ro`. Run `granular-test-ro`. It passes.
 
 ## 13. Limitations
 
