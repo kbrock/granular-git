@@ -53,6 +53,7 @@ no_osx_item() { ! security find-internet-password -s github.com; }
 osx_returns_nothing() { [ -z "$(printf "$req" | git credential-osxkeychain get 2>/dev/null)" ]; }
 
 no_gh_item() { ! security find-generic-password -s gh:github.com; }
+real_gh_exists() { [ -x "$real_gh" ]; }
 gh_has_no_token() { [ -x "$real_gh" ] && ! env -u GH_TOKEN -u GITHUB_TOKEN "$real_gh" auth token; }
 no_token_env() { ! env | grep -qE '^(GH|GITHUB)_TOKEN='; }
 no_hosts_token() { ! grep -qs oauth_token "$HOME/.config/gh/hosts.yml"; }
@@ -62,7 +63,7 @@ gh_authenticated() { gh api user; }
 
 echo "git"
 check "credential.helper ends with an empty entry, then granular-git" \
-  "in ~/.gitconfig: 'helper =' (empty), then 'helper = $helper'; remove other credential.helper lines" helper_chain
+  "git config --global --add credential.helper '' && git config --global --add credential.helper ${helper:-/usr/local/bin/granular-git}" helper_chain
 if daemon_answers >/dev/null 2>&1; then
   echo "PASS  daemon answers 'get github.com'"
 else
@@ -89,6 +90,7 @@ check "git credential-osxkeychain returns nothing for github.com" \
   "printf '$req' | git credential-osxkeychain erase" osx_returns_nothing
 
 echo "gh"
+check "the real gh is installed ($real_gh)" "brew install gh && brew unlink gh" real_gh_exists
 check "gh keyring item is gone" "gh auth logout -h github.com" no_gh_item
 check "the real gh has no token (gh auth token fails)" "gh auth logout -h github.com" gh_has_no_token
 check "GH_TOKEN and GITHUB_TOKEN are not set" "unset them and remove them from your shell profile" no_token_env
