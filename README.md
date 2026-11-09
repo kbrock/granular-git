@@ -132,19 +132,33 @@ A prompt appears once per binary per item (`ro` and `rw` are two items). A signe
 Type these in your own terminal.
 
 1. `make install`. The first build creates a signing identity, and macOS asks for your login password. The identity signs the binaries so the Keychain's "Always Allow" survives a rebuild. `granular` and its links (`granular-git`, `granular-passwd`, `granular-daemon`, `gh`) land in `/usr/local/bin`.
-2. Create two GitHub tokens:
-   - `ro`: fine-grained, owner you, All repositories, with Contents, Pull requests and Issues read-only. Claude gets this one.
-   - `rw`: classic with the `repo` scope, plus `workflow`, `gist` or `read:org` if you use them. It reaches every repo your account can push to. A fine-grained token has one owner and cannot reach repos owned by another user.
-3. Store each in the vault. The first run creates the vault, and a system dialog asks for its password. Enter your GitHub username, then paste the token. The command refuses to run under Claude.
-   `granular-passwd ro github.com "<message>"`
-   `granular-passwd rw github.com`
-   The optional message is stored on the item and printed on stderr whenever the helper serves that profile. Say that a push is not allowed and to ask you. `granular-passwd -h` lists the forms.
-4. Point Git at the helper in `~/.gitconfig`, with an absolute path:
+2. Create and store the `ro` token. Claude gets this one. `gh` cannot create personal access tokens, so use the web UI.
+   a. Open https://github.com/settings/personal-access-tokens/new
+   b. Token name `granular-ro`. Pick an Expiration. Resource owner: you. Repository access: All repositories.
+      Under Permissions, Repositories, add Contents, Pull requests and Issues, each with read access.
+      Click Generate token and copy it.
+   c. In your terminal:
+      `granular-passwd ro github.com "You don't currently have access to push to github. Stop and ask for access."`
+      Enter your GitHub username, then paste the token. The command refuses to run under Claude. The first run creates the vault, and a system dialog asks for its password. The item is `granular:ro:github.com`. The message is printed on stderr whenever the helper serves this profile. `granular-passwd -h` lists the forms.
+3. Create and store the `rw` token. This one reaches every repo your account can push to.
+   a. Open https://github.com/settings/tokens/new
+   b. Note `granular-rw`. Pick an Expiration. Tick `repo`, plus `workflow`, `gist` or `read:org` if used.
+      Click Generate token and copy it.
+   c. In your terminal: `granular-passwd rw github.com`. The item is `granular:rw:github.com`.
+
+3b. Create a fine-grained `rw` token instead. It pushes to one owner.
+    a. Open https://github.com/settings/personal-access-tokens/new
+    b. Token name `granular-rw`. Pick an Expiration. Resource owner: the owner you push to. Repository access: Only select repositories, then pick them. Under Permissions, Repositories, add Contents and Pull requests, each with read and write access. Click Generate token and copy it.
+    c. In your terminal: `granular-passwd rw github.com`. The item is `granular:rw:github.com`.
+    Repos owned by another user are out of reach for this token.
+
+4. Run `./audit.sh`. Both items appear under "vault", with the account name and never a token.
+5. Point Git at the helper in `~/.gitconfig`, with an absolute path:
    `[credential]`, then `helper =` (empty, clears every earlier helper), then `helper = /usr/local/bin/granular-git`
    Remove any other `credential.helper` lines from your config files.
-5. Take brew's `gh` off PATH: `rm /opt/homebrew/bin/gh`
-6. Remove the credential `gh` holds itself: `gh auth logout -h github.com`
-7. Check that a push is refused under `ro` and works under `rw`. In a clone of a private repo, run `git push --dry-run`, or push a new branch. Under `ro` you see the message and a 403 (`Write access to repository not granted`). Under `rw` the push goes through. `git ls-remote` also reaches the helper, on a private repo only: a public repo never asks for credentials.
+6. Take brew's `gh` off PATH: `rm /opt/homebrew/bin/gh`
+7. Remove the credential `gh` holds itself: `gh auth logout -h github.com`
+8. Check the profiles with the tests in sections 9 to 11: `./test-rw.sh` in your terminal, `./test-ro.sh` inside a Claude session. They only read and run `git push --dry-run`, so they change nothing on GitHub. They use the test repo from section 9, or any private repo of yours that you can push to, named in `GRANULAR_TEST_REPO`. A public repo never asks for credentials, so it proves nothing.
 
 Git and `gh` now decide in their own process: a `claude` above them gets `ro`, anyone else gets `rw`.
 - You gain: Claude's pushes fail and yours work, with nothing else running.
