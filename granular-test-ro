@@ -1,6 +1,5 @@
 #!/bin/bash
 # This tests what the ro profile can do: push is refused, and the gh token has no repo scope.
-# It does not check machine setup (that is granular-audit).
 # Run this from a process that should get the read-only profile, for example from inside a Claude session.
 # Run it inside a clone of a repo you can push to, public or private.
 # It changes nothing on GitHub: a push with --dry-run, and one read. Prints PASS or FAIL per check and no tokens.
