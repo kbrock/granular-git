@@ -247,13 +247,13 @@ Checks (PASS or FAIL for each; the script exits 1 if any fails):
 
 ## 12. Test: flipping
 
-A flip is checked by running the two tests either side of it. Run them from the process you will flip, a Claude session or a terminal, on the test branch from section 9.
+A flip is checked by running the two tests either side of it, in one Claude session on the test branch from section 9. A Claude session starts at `ro`. For a terminal, flip its slot to `ro` first. The flip needs the daemon.
 
 Steps:
-1. Start `granular-daemon` in another tab. In the process, run `granular-test-ro`. It passes.
-2. In the daemon's tab, flip this process to `rw`.
-3. Run `granular-test-rw`. It passes.
-4. Flip the process back to `ro` and run `granular-test-ro` again. It passes.
+1. Start `granular-daemon` in another tab. In the session, run `granular-test-ro`. It passes.
+2. In the daemon's tab, type the session's slot number and press Enter. The session is now `rw`.
+3. In the session, run `granular-test-rw`. It passes.
+4. Type the slot number again. The session is `ro`. Run `granular-test-ro`. It passes.
 
 ## 13. Limitations
 
