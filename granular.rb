@@ -33,7 +33,10 @@ SHELLS = ["sh", "bash", "zsh", "fish", "dash", "ksh", "tcsh"]
 # App rows, matched by the executable's file name: the claude CLI and Claude.app. The nearest process
 # above the caller with a row decides.
 APP_NAMES = ["claude", "Claude"]
-APP_PROFILES = ["ro", "ro"]
+# The profile for claude, and for anything unknown: a chain that does not reach launchd, or a process
+# whose executable path cannot be read (for example after its binary was upgraded away).
+LOW_PROFILE = "ro"
+APP_PROFILES = [LOW_PROFILE, LOW_PROFILE]
 DEFAULT_PROFILE = "rw"
 $default_profile = DEFAULT_PROFILE
 # git and gh ask granular-daemon. true: with no daemon they give no token. false: they decide in their own process.
@@ -201,16 +204,17 @@ end
 # The daemon's profile for pid. Walking up from the caller, the first process with a profile of its own
 # decides: its slot if one is set, else its app row. With none the default applies. The outermost shell
 # takes a slot when nothing matched, so a person's terminal can be flipped too. A chain that does not
-# reach launchd gets ro.
+# reach launchd, or holds a process whose path cannot be read, gets LOW_PROFILE.
 def profile_for(pid, pids, starts, states)
   chain = ancestors(pid)
-  return "ro" unless chain.last == 1
+  return LOW_PROFILE unless chain.last == 1
   forget_gone(pids, starts, states)
   shell = -1
   j = 0
   while j < chain.length - 1
     i = node_index(pids, chain[j])
     return states[i] if i >= 0 && states[i] != ""
+    return LOW_PROFILE if G.granular_pid_path(chain[j]) == ""
     row = app_row(chain[j])
     if row >= 0
       claim_slot(pids, starts, states, chain[j]) if i < 0
