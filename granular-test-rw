@@ -28,13 +28,13 @@ push_status=$?
 gh_out=$(gh api -i user 2>&1)
 
 push_accepted() { [ "$push_status" -eq 0 ]; }
-push_not_refused() { ! grep -q 'Write access to repository not granted' <<<"$push_out"; }
+push_has_no_message() { ! grep -q "^granular: " <<<"$push_out"; }
 gh_reads() { head -1 <<<"$gh_out" | grep -q ' 200'; }
 gh_token_is_classic() { grep -qi '^x-oauth-scopes:.*repo' <<<"$gh_out"; }
 
 echo "read-write profile ($repo)"
 check "push is accepted" push_accepted
-check "push is not refused for write access" push_not_refused
+check "push shows no granular: message" push_has_no_message
 check "gh can read" gh_reads
 check "gh holds a token with the repo scope" gh_token_is_classic
 
