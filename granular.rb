@@ -42,6 +42,8 @@ DEFAULT_PROFILE = "rw"
 # chain that does not.
 $default_profile = DEFAULT_PROFILE
 $unknown_profile = LOW_PROFILE
+# The profiles a flip cycles through, in order. The daemon terminal adds to the end.
+$profiles = ["ro", "rw"]
 # git and gh ask granular-daemon. true: with no daemon they give no token. false: they decide in their own process.
 REQUIRE_DAEMON = false
 # The keychain file in ~/Library/Keychains that holds the logins.
@@ -267,7 +269,8 @@ end
 def show_nodes(pids, starts, states)
   scan_claudes(pids, starts, states)
   home = ENV["HOME"]
-  $stderr.puts "  0: default #{$default_profile}"
+  $stderr.puts "  d: default #{$default_profile}"
+  $stderr.puts "  x: unknown #{$unknown_profile}"
   shown = 0
   i = 0
   while i < pids.length
@@ -283,15 +286,54 @@ def show_nodes(pids, starts, states)
   $stderr.puts "granular-daemon: nothing to flip yet" if shown == 0
 end
 
-# A slot number flips that claude between ro and rw. Anything else lists them.
+# The profile after name in $profiles, wrapping around. The first if name is not in the list.
+def next_profile(name)
+  i = 0
+  while i < $profiles.length
+    return $profiles[(i + 1) % $profiles.length] if $profiles[i] == name
+    i += 1
+  end
+  $profiles[0]
+end
+
+# True for a new profile name: starts with a letter, then letters, digits, - or _. The names d and x
+# are the terminal's keys.
+def profile_name?(word)
+  letters = "abcdefghijklmnopqrstuvwxyz"
+  return false if word == "" || word == "d" || word == "x"
+  return false unless letters.include?(word[0])
+  i = 1
+  while i < word.length
+    return false unless (letters + "0123456789-_").include?(word[i])
+    i += 1
+  end
+  true
+end
+
+def known_profile?(name)
+  i = 0
+  while i < $profiles.length
+    return true if $profiles[i] == name
+    i += 1
+  end
+  false
+end
+
+# d and x move the default and unknown rows to the next profile, and a slot number does the same for
+# that process. A new profile name is added to the end of the list. Anything else lists the rows.
 def node_command(line, pids, starts, states)
   scan_claudes(pids, starts, states)
-  if line.strip == "0"
-    $default_profile = $default_profile == "rw" ? "ro" : "rw"
+  word = line.strip
+  if word == "d"
+    $default_profile = next_profile($default_profile)
+  elsif word == "x"
+    $unknown_profile = next_profile($unknown_profile)
+  elsif profile_name?(word) && !known_profile?(word)
+    $profiles << word
   end
-  n = line.to_i
+  n = word.to_i
   if n >= 1 && n <= pids.length && pids[n - 1] != 0
-    states[n - 1] = profile_for(pids[n - 1], pids, starts, states) == "rw" ? "ro" : "rw"
+    states[n - 1] = next_profile(profile_for(pids[n - 1], pids, starts, states))
   end
   show_nodes(pids, starts, states)
 end
@@ -312,7 +354,7 @@ def daemon(verbose)
   pids = [0, 0, 0, 0, 0, 0, 0, 0, 0]
   starts = ["", "", "", "", "", "", "", "", ""]
   states = ["", "", "", "", "", "", "", "", ""]
-  $stderr.puts "granular-daemon: type a slot number (0-9) and Enter to flip it between ro and rw. 0 is the default for any process without a slot. Enter alone lists the slots."
+  $stderr.puts "granular-daemon: type a slot number (1-9) and Enter to move that process to the next profile. d is the default row, x is the unknown row. A new profile name is added to the cycle. Enter alone lists the rows."
   show_nodes(pids, starts, states)
   while true
     fd = G.granular_accept_or_enter(listener)
