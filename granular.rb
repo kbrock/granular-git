@@ -23,6 +23,7 @@ module G
   ffi_func :granular_write_line,  [:int, :str],   :int
 end
 
+VERSION = "0.1.0"
 SELF_PREFIX = "granular-"
 # A login is a Keychain item: service "granular:<profile>:<host>", account = username, secret = token.
 KEYCHAIN_PREFIX = "granular:"
@@ -518,11 +519,16 @@ end
 program = name.start_with?(SELF_PREFIX) ? name[SELF_PREFIX.length..-1] : ""
 USAGE = [
   "usage: granular-git [-v] <get|store|erase>",
+  "       granular-git --version",
   "       granular-daemon [-v]",
   "       granular-passwd [-v] <profile> <host> [description]",
   "       granular-passwd [-v] --stdin <profile> <host> [description]   (username and token as two lines on stdin)",
   "       granular-passwd [-v] --rekey <profile> <host> [description]"
 ]
+if args.length == 1 && args[0] == "--version" && program != ""
+  puts VERSION
+  exit 0
+end
 if args.length == 1 && (args[0] == "-h" || args[0] == "--help") && program != "git"
   USAGE.each { |l| puts l }
   exit 0
