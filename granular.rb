@@ -38,7 +38,25 @@ APP_NAMES = ["claude", "Claude"]
 LOW_PROFILE = "ro"
 APP_PROFILES = [LOW_PROFILE, LOW_PROFILE]
 DEFAULT_PROFILE = "rw"
-$default_profile = DEFAULT_PROFILE
+# The table of rows. Row 0 is pid 0, which no caller can have: the unknown row, for a chain that does not
+# reach launchd. Row 1 is pid 1: the default row, for a chain that does. The rest are slots for processes.
+UNKNOWN_ROW = 0
+DEFAULT_ROW = 1
+FIRST_SLOT = 2
+def table_pids
+  [0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+end
+
+def table_starts
+  ["", "", "", "", "", "", "", "", "", "", ""]
+end
+
+def table_states
+  [LOW_PROFILE, DEFAULT_PROFILE, "", "", "", "", "", "", "", "", ""]
+end
+
+# The profiles a flip cycles through, in order. The daemon terminal adds to the end.
+$profiles = ["ro", "rw"]
 # git and gh ask granular-daemon. true: with no daemon they give no token. false: they decide in their own process.
 REQUIRE_DAEMON = false
 # The keychain file in ~/Library/Keychains that holds the logins.
@@ -158,13 +176,13 @@ def token_reply(host, user)
   reply = ask_daemon(host, user)
   return reply unless reply == "down"
   return "" if REQUIRE_DAEMON
-  reply_for(request_for(host, user), profile_for(G.getpid, [0, 0, 0, 0, 0, 0, 0, 0, 0], ["", "", "", "", "", "", "", "", ""], ["", "", "", "", "", "", "", "", ""]))
+  reply_for(request_for(host, user), profile_for(G.getpid, table_pids, table_starts, table_states))
 end
 
 # Pids in chain (caller first) whose executable is claude.
-# Position of pid in pids, or -1.
+# Position of pid among the slots, or -1.
 def node_index(pids, pid)
-  i = 0
+  i = FIRST_SLOT
   while i < pids.length
     return i if pids[i] == pid
     i += 1
@@ -172,10 +190,10 @@ def node_index(pids, pid)
   -1
 end
 
-# Nine slots remember the claude processes seen. pids[i] is 0 for a free slot, starts[i] is the start
-# time that tells a reused pid apart, and states[i] is "" (not set), "ro" or "rw".
+# Nine slots remember the processes seen. pids[i] is 0 for a free slot, starts[i] is the start time
+# that tells a reused pid apart, and states[i] is "" (not set) or a profile name.
 def forget_gone(pids, starts, states)
-  i = 0
+  i = FIRST_SLOT
   while i < pids.length
     if pids[i] != 0 && G.granular_pid_start(pids[i]) != starts[i]
       pids[i] = 0
@@ -188,7 +206,7 @@ end
 
 # The lowest free slot now holding pid, or -1 if all are taken.
 def claim_slot(pids, starts, states, pid)
-  i = 0
+  i = FIRST_SLOT
   while i < pids.length
     if pids[i] == 0
       pids[i] = pid
@@ -204,17 +222,17 @@ end
 # The daemon's profile for pid. Walking up from the caller, the first process with a profile of its own
 # decides: its slot if one is set, else its app row. With none the default applies. The outermost shell
 # takes a slot when nothing matched, so a person's terminal can be flipped too. A chain that does not
-# reach launchd, or holds a process whose path cannot be read, gets LOW_PROFILE.
+# reach launchd, or holds a process whose path cannot be read, gets the unknown profile.
 def profile_for(pid, pids, starts, states)
   chain = ancestors(pid)
-  return LOW_PROFILE unless chain.last == 1
+  return states[UNKNOWN_ROW] unless chain.last == 1
   forget_gone(pids, starts, states)
   shell = -1
   j = 0
   while j < chain.length - 1
     i = node_index(pids, chain[j])
     return states[i] if i >= 0 && states[i] != ""
-    return LOW_PROFILE if G.granular_pid_path(chain[j]) == ""
+    return states[UNKNOWN_ROW] if G.granular_pid_path(chain[j]) == ""
     row = app_row(chain[j])
     if row >= 0
       claim_slot(pids, starts, states, chain[j]) if i < 0
@@ -226,7 +244,7 @@ def profile_for(pid, pids, starts, states)
   if shell != -1 && node_index(pids, shell) < 0
     claim_slot(pids, starts, states, shell)
   end
-  $default_profile
+  states[DEFAULT_ROW]
 end
 
 # The whole chain on one line, outermost first and without launchd: "login > zsh [2] > claude [1] > git".
@@ -241,7 +259,7 @@ def chain_label(pid, pids)
       name = File.basename(G.granular_pid_path(chain[j]))
       name = "?" if name == ""
       n = node_index(pids, chain[j])
-      name = "#{name} [#{n + 1}]" if n >= 0
+      name = "#{name} [#{n}]" if n >= 0
       label = label == "" ? name : label + " > " + name
     end
     j -= 1
@@ -264,15 +282,16 @@ end
 def show_nodes(pids, starts, states)
   scan_claudes(pids, starts, states)
   home = ENV["HOME"]
-  $stderr.puts "  0: default #{$default_profile}"
+  $stderr.puts "  #{UNKNOWN_ROW}: unknown #{states[UNKNOWN_ROW]}"
+  $stderr.puts "  #{DEFAULT_ROW}: default #{states[DEFAULT_ROW]}"
   shown = 0
-  i = 0
+  i = FIRST_SLOT
   while i < pids.length
     if pids[i] != 0
       now = profile_for(pids[i], pids, starts, states)
       cwd = G.granular_pid_cwd(pids[i])
       cwd = "~" + cwd[home.length..-1] if cwd.start_with?(home)
-      $stderr.puts "  #{i + 1}: #{File.basename(G.granular_pid_path(pids[i]))} pid=#{pids[i]} #{now}  #{cwd}"
+      $stderr.puts "  #{i}: #{File.basename(G.granular_pid_path(pids[i]))} pid=#{pids[i]} #{now}  #{cwd}"
       shown += 1
     end
     i += 1
@@ -280,15 +299,49 @@ def show_nodes(pids, starts, states)
   $stderr.puts "granular-daemon: nothing to flip yet" if shown == 0
 end
 
-# A slot number flips that claude between ro and rw. Anything else lists them.
+# The profile after name in $profiles, wrapping around. The first if name is not in the list.
+def next_profile(name)
+  i = 0
+  while i < $profiles.length
+    return $profiles[(i + 1) % $profiles.length] if $profiles[i] == name
+    i += 1
+  end
+  $profiles[0]
+end
+
+# True for a new profile name: starts with a letter, then letters, digits, - or _.
+def profile_name?(word)
+  letters = "abcdefghijklmnopqrstuvwxyz"
+  return false if word == ""
+  return false unless letters.include?(word[0])
+  i = 1
+  while i < word.length
+    return false unless (letters + "0123456789-_").include?(word[i])
+    i += 1
+  end
+  true
+end
+
+def known_profile?(name)
+  i = 0
+  while i < $profiles.length
+    return true if $profiles[i] == name
+    i += 1
+  end
+  false
+end
+
+# A row number moves that row to the next profile. A new profile name is added to the end of the list.
+# Anything else lists the rows.
 def node_command(line, pids, starts, states)
   scan_claudes(pids, starts, states)
-  if line.strip == "0"
-    $default_profile = $default_profile == "rw" ? "ro" : "rw"
-  end
-  n = line.to_i
-  if n >= 1 && n <= pids.length && pids[n - 1] != 0
-    states[n - 1] = profile_for(pids[n - 1], pids, starts, states) == "rw" ? "ro" : "rw"
+  word = line.strip
+  n = word.to_i
+  n = -1 if n == 0 && word != "0"
+  if n >= 0 && n < pids.length && (n < FIRST_SLOT || pids[n] != 0)
+    states[n] = next_profile(n < FIRST_SLOT ? states[n] : profile_for(pids[n], pids, starts, states))
+  elsif profile_name?(word) && !known_profile?(word)
+    $profiles << word
   end
   show_nodes(pids, starts, states)
 end
@@ -306,10 +359,10 @@ def daemon(verbose)
   end
   $stderr.puts "granular-daemon: listening on #{dir}/sock" if verbose
 
-  pids = [0, 0, 0, 0, 0, 0, 0, 0, 0]
-  starts = ["", "", "", "", "", "", "", "", ""]
-  states = ["", "", "", "", "", "", "", "", ""]
-  $stderr.puts "granular-daemon: type a slot number (0-9) and Enter to flip it between ro and rw. 0 is the default for any process without a slot. Enter alone lists the slots."
+  pids = table_pids
+  starts = table_starts
+  states = table_states
+  $stderr.puts "granular-daemon: type a row number and Enter to move that row to the next profile. 0 is the unknown row, 1 is the default row, the rest are processes. A new profile name is added to the cycle. Enter alone lists the rows."
   show_nodes(pids, starts, states)
   while true
     fd = G.granular_accept_or_enter(listener)
