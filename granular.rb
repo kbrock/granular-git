@@ -425,6 +425,7 @@ def gh_wrapper
     $stderr.puts "gh: #{reply == "" ? "no reply from daemon" : reply}"
     return 1
   end
+  $stderr.puts "granular: " + login[2] if ARGV[0] == "auth" && login[2] != ""
   G.granular_exec(REAL_GH, "GH_TOKEN", login[1])
   $stderr.puts "gh: cannot run #{REAL_GH}"
   1
