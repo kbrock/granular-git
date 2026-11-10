@@ -34,7 +34,7 @@ gh_token_is_not_classic() { ! grep -qi '^x-oauth-scopes:.*repo' <<<"$gh_out"; }
 
 echo "read-only profile ($repo)"
 check "push is refused" push_refused
-check "push shows the profile message" push_shows_message
+check "push shows the granular: message" push_shows_message
 check "gh can read" gh_reads
 check "gh holds a token without the repo scope" gh_token_is_not_classic
 
