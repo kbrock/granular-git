@@ -402,8 +402,11 @@ end
 
 # Installed as "gh" ahead of the real one on PATH: gets the caller's token from the daemon and
 # runs the real gh with it in GH_TOKEN.
+#
+# gh auth runs without the token, so `gh auth token` has nothing to print. Plain `gh auth status` runs
+# with it: gh shows the token masked. Any extra argument (--show-token, -t) keeps it bare.
 def gh_wrapper
-  if ARGV[0] == "auth"
+  if ARGV[0] == "auth" && !(ARGV.length == 2 && ARGV[1] == "status")
     G.granular_exec(REAL_GH, "GH_TOKEN", "")
     $stderr.puts "gh: cannot run #{REAL_GH}"
     return 1
