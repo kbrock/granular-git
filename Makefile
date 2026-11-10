@@ -47,7 +47,14 @@ uninstall:
 		rm -f $(PREFIX)/granular
 	rm -f $(addprefix $(PREFIX)/,$(SCRIPTS))
 
+# A tarball of what install puts in PREFIX, links included: sudo tar xzf granular.tgz -C /usr/local/bin
+dist: $(BUILD)/granular
+	rm -rf $(BUILD)/dist
+	mkdir -p $(BUILD)/dist
+	$(MAKE) install PREFIX=$(BUILD)/dist
+	cd $(BUILD)/dist && tar czf ../granular.tgz *
+
 clean:
 	rm -rf $(BUILD)
 
-.PHONY: all link install uninstall clean
+.PHONY: all link install uninstall dist clean
