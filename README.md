@@ -47,11 +47,11 @@ Spinel (Ruby ahead-of-time compiler that produces a standalone native binary by 
 ### Profile table
 
 A request walks up from the caller. The first process with a profile of its own decides, else the default applies:
-1. A process row: pid plus start time (the start time tells a reused pid apart). The slots are the process rows. Flipping a slot sets its row.
-2. An app row: the executable's file name. `claude` (the CLI) and `Claude` (`Claude.app`) get the profile.
-3. The default row.
+1. A process node: pid plus start time (the start time tells a reused pid apart). The slots are the process nodes. Flipping a slot sets its node.
+2. An app name: the executable's file name. `claude` (the CLI) and `Claude` (`Claude.app`) get the profile.
+3. The default node (pid 1).
 
-Seeded rows: the `claude` CLI and `Claude.app` map to `ro`. Default maps to `rw`. A chain that does not reach launchd gets `ro`. The table lives in the daemon's memory only; a daemon restart returns it to the seed.
+Seeded: the `claude` CLI and `Claude.app` map to `ro`. Node 0 stands for every process that is not a child of pid 1 (pid 0 is a pid no caller can have). It holds `ro` and applies to a chain that does not reach launchd, or that holds a process whose path cannot be read. Node 1 stands for every other process (pid 1) and holds `rw`. Nodes 2 to 10 are the processes. Profiles cycle in the order `ro`, `rw`, then any name added in the daemon's tab. The table lives in the daemon's memory only; a daemon restart returns it to the seed.
 
 A profile holds the credentials for one target (GitHub, Gmail and others). A tool takes the credential of its own class from the profile it is given.
 
@@ -86,7 +86,7 @@ Not started. A Claude Code hook (not a Git hook) runs before a shell command, ca
 
 ### Per-session overrides (1D)
 
-Not started. `granular-trust` sets the profile of a process by pid, so each Claude Code session carries a profile of its own, and the row ends when the process exits. Setting a profile is a request that the caller's profile allows or denies, and Claude's profile denies it. Rules can also differ per session through the sub-agent ID in the hook input. Examples:
+Not started. `granular-trust` sets the profile of a process by pid, so each Claude Code session carries a profile of its own, and the node ends when the process exits. Setting a profile is a request that the caller's profile allows or denies, and Claude's profile denies it. Rules can also differ per session through the sub-agent ID in the hook input. Examples:
 - One session may merge into master while a concurrent session may only merge into branches.
 - Per-project config decides whether Claude commits to master or only to branches.
 - Committing to master is separated from committing to a branch, and from merging master into a branch.
@@ -168,14 +168,15 @@ Git and `gh` now decide in their own process: a `claude` above them gets `ro`, a
 
 Type `granular-daemon` in a spare terminal tab and leave it running.
 
-Git and `gh` now ask the daemon over `~/.granular/sock`, and only the daemon reads the Keychain for them. Every request prints the caller's chain on one line, outermost first, with a slot number on each process that can carry a profile:
-`login > zsh [2] > claude [1] > node > git > git-remote-https: ro`
+Git and `gh` now ask the daemon over `~/.granular/sock`, and only the daemon reads the Keychain for them. Every request prints the caller's chain on one line, outermost first, with a node number on each process that can carry a profile:
+`login > zsh [3] > claude [2] > node > git > git-remote-https: ro`
 
-- The daemon decides by the profile table (see Mechanism). The first process with a profile decides: a slot you flipped, else a table row (seeded for `claude` and `Claude.app`). With none the caller gets `DEFAULT_PROFILE` (`rw`).
-- Slots 1 to 9 go to every matched process the daemon sees and to the outermost shell above it.
-- Type a slot number and Enter in the daemon's tab to flip that process between `ro` and `rw`. Enter alone lists the slots with their pid and working directory. The slot list shows a process only after it has made a request or the scan has found a `claude` by name.
-- Type `0` and Enter to flip the default (`DEFAULT_PROFILE`) between `ro` and `rw`. The default applies to a process with no slot and no table row.
-- A slot is freed when its process exits, and its number is reused.
+- The daemon decides by the profile table (see Mechanism). The first process with a profile decides: a node you moved, else an app name (seeded for `claude` and `Claude.app`). With none the caller gets the default node (`rw`).
+- Nodes 2 to 10 go to every matched process the daemon sees and to the outermost shell above it.
+- Type a node number and Enter in the daemon's tab to move that node to the next profile. Enter alone lists the nodes with their pid and working directory. A process shows only after it has made a request or the scan has found a `claude` by name.
+- Node 0 is `not under pid 1` and node 1 is `under pid 1`. Moving node 1 changes what a process with no node of its own gets.
+- Type a new profile name (a letter, then letters, digits, `-` or `_`) and Enter to add it to the end of the cycle. Store its token with `granular-passwd <name> github.com`. A profile with no token answers `deny no item`.
+- A node is freed when its process exits, and its number is reused.
 
 - You gain: flip one Claude session to `rw` for a task and flip it back, and a line for every request.
 - You lose: one more process to keep running. A Keychain dialog blocks the daemon until it is answered.
@@ -266,9 +267,9 @@ Steps:
 - Same-user processes, including Claude, can kill the daemon or write under `~/.granular`.
 - A Claude process that connects to the socket itself gets `ro` by the same walk.
 - Claude could type into the daemon's terminal to flip its own slot.
-- `Claude.app`'s own Terminal panel descends from `Claude.app`, so the user's in-app terminal gets `ro`. A process row flips it.
+- `Claude.app`'s own Terminal panel descends from `Claude.app`, so the user's in-app terminal gets `ro`. A process node flips it.
 - With the default `rw`, a terminal is not trusted, only not matched. Claude can script one (`osascript`, `open -a Terminal`), and the command runs outside its chain and gets `rw`. Running Claude as a separate user closes this.
-- A process whose path cannot be read has no path and matches no row. From inside Claude's sandbox, the `claude` process is such a process.
+- A process whose path cannot be read has no path and matches no node. From inside Claude's sandbox, the `claude` process is such a process.
 - Nested `claude` processes: the nearest one decides.
 
 ## 14. Uninstall
@@ -288,4 +289,4 @@ Steps:
   - `VAULT`: the keychain file in `~/Library/Keychains`.
   - `REQUIRE_DAEMON`: default `false`. `true` makes Git and `gh` give no token when the daemon is not running.
   - `REAL_GH`: the real `gh`, default `/opt/homebrew/opt/gh/bin/gh`. On an Intel Mac use `/usr/local/opt/gh/bin/gh`.
-  - `APP_PROFILES`, `DEFAULT_PROFILE`: the table rows.
+  - `APP_PROFILES`, `DEFAULT_PROFILE`: the table entries.
