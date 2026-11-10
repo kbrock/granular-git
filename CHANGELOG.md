@@ -6,6 +6,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Fixed
+- A process whose executable path can no longer be read, such as a `claude` still running after an upgrade replaced its binary, now gets a node in the daemon. Before, it had none, so it stayed on the unknown profile (`ro`) and could not be moved.
+
 ## [0.1.0] - 2026-11-10
 
 ### Added

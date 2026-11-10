@@ -245,7 +245,8 @@ end
 # The daemon's profile for pid. Walking up from the caller, the first process with a profile of its own
 # decides: its slot if one is set, else its app name. With none the default applies. The outermost shell
 # takes a slot when nothing matched, so a person's terminal can be flipped too. A chain that does not
-# reach launchd, or holds a process whose path cannot be read, gets the unknown profile.
+# reach launchd, or holds a process whose path cannot be read, gets the unknown profile. A process whose
+# path cannot be read takes a slot too, so it can be moved.
 def profile_for(pid, nodes)
   chain = ancestors(pid)
   return nodes[UNKNOWN_NODE].profile unless chain.last == 1
@@ -255,7 +256,10 @@ def profile_for(pid, nodes)
   while j < chain.length - 1
     i = node_index(nodes, chain[j])
     return nodes[i].profile if i >= 0 && nodes[i].profile != ""
-    return nodes[UNKNOWN_NODE].profile if G.granular_pid_path(chain[j]) == ""
+    if G.granular_pid_path(chain[j]) == ""
+      claim_slot(nodes, chain[j]) if i < 0
+      return nodes[UNKNOWN_NODE].profile
+    end
     app = app_index(chain[j])
     if app >= 0
       claim_slot(nodes, chain[j]) if i < 0
@@ -314,7 +318,9 @@ def show_nodes(nodes)
       now = profile_for(nodes[i].pid, nodes)
       cwd = G.granular_pid_cwd(nodes[i].pid)
       cwd = "~" + cwd[home.length..-1] if cwd.start_with?(home)
-      $stderr.puts "  #{i}: #{File.basename(G.granular_pid_path(nodes[i].pid))} pid=#{nodes[i].pid} #{now}  #{cwd}"
+      name = File.basename(G.granular_pid_path(nodes[i].pid))
+      name = "?" if name == ""
+      $stderr.puts "  #{i}: #{name} pid=#{nodes[i].pid} #{now}  #{cwd}"
       shown += 1
     end
     i += 1
