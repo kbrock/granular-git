@@ -259,7 +259,7 @@ def chain_label(pid, pids)
       name = File.basename(G.granular_pid_path(chain[j]))
       name = "?" if name == ""
       n = node_index(pids, chain[j])
-      name = "#{name} [#{n - FIRST_SLOT + 1}]" if n >= 0
+      name = "#{name} [#{n}]" if n >= 0
       label = label == "" ? name : label + " > " + name
     end
     j -= 1
@@ -282,8 +282,8 @@ end
 def show_nodes(pids, starts, states)
   scan_claudes(pids, starts, states)
   home = ENV["HOME"]
-  $stderr.puts "  d: default #{states[DEFAULT_ROW]}"
-  $stderr.puts "  x: unknown #{states[UNKNOWN_ROW]}"
+  $stderr.puts "  #{UNKNOWN_ROW}: unknown #{states[UNKNOWN_ROW]}"
+  $stderr.puts "  #{DEFAULT_ROW}: default #{states[DEFAULT_ROW]}"
   shown = 0
   i = FIRST_SLOT
   while i < pids.length
@@ -291,7 +291,7 @@ def show_nodes(pids, starts, states)
       now = profile_for(pids[i], pids, starts, states)
       cwd = G.granular_pid_cwd(pids[i])
       cwd = "~" + cwd[home.length..-1] if cwd.start_with?(home)
-      $stderr.puts "  #{i - FIRST_SLOT + 1}: #{File.basename(G.granular_pid_path(pids[i]))} pid=#{pids[i]} #{now}  #{cwd}"
+      $stderr.puts "  #{i}: #{File.basename(G.granular_pid_path(pids[i]))} pid=#{pids[i]} #{now}  #{cwd}"
       shown += 1
     end
     i += 1
@@ -309,11 +309,10 @@ def next_profile(name)
   $profiles[0]
 end
 
-# True for a new profile name: starts with a letter, then letters, digits, - or _. The names d and x
-# are the terminal's keys.
+# True for a new profile name: starts with a letter, then letters, digits, - or _.
 def profile_name?(word)
   letters = "abcdefghijklmnopqrstuvwxyz"
-  return false if word == "" || word == "d" || word == "x"
+  return false if word == ""
   return false unless letters.include?(word[0])
   i = 1
   while i < word.length
@@ -332,21 +331,17 @@ def known_profile?(name)
   false
 end
 
-# d and x move the default and unknown rows to the next profile, and a slot number does the same for
-# that process. A new profile name is added to the end of the list. Anything else lists the rows.
+# A row number moves that row to the next profile. A new profile name is added to the end of the list.
+# Anything else lists the rows.
 def node_command(line, pids, starts, states)
   scan_claudes(pids, starts, states)
   word = line.strip
-  if word == "d"
-    states[DEFAULT_ROW] = next_profile(states[DEFAULT_ROW])
-  elsif word == "x"
-    states[UNKNOWN_ROW] = next_profile(states[UNKNOWN_ROW])
+  n = word.to_i
+  n = -1 if n == 0 && word != "0"
+  if n >= 0 && n < pids.length && (n < FIRST_SLOT || pids[n] != 0)
+    states[n] = next_profile(n < FIRST_SLOT ? states[n] : profile_for(pids[n], pids, starts, states))
   elsif profile_name?(word) && !known_profile?(word)
     $profiles << word
-  end
-  n = word.to_i + FIRST_SLOT - 1
-  if word.to_i >= 1 && n < pids.length && pids[n] != 0
-    states[n] = next_profile(profile_for(pids[n], pids, starts, states))
   end
   show_nodes(pids, starts, states)
 end
@@ -367,7 +362,7 @@ def daemon(verbose)
   pids = table_pids
   starts = table_starts
   states = table_states
-  $stderr.puts "granular-daemon: type a slot number (1-9) and Enter to move that process to the next profile. d is the default row, x is the unknown row. A new profile name is added to the cycle. Enter alone lists the rows."
+  $stderr.puts "granular-daemon: type a row number and Enter to move that row to the next profile. 0 is the unknown row, 1 is the default row, the rest are processes. A new profile name is added to the cycle. Enter alone lists the rows."
   show_nodes(pids, starts, states)
   while true
     fd = G.granular_accept_or_enter(listener)
