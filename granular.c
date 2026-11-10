@@ -93,6 +93,30 @@ const char *granular_claude_pids(void)
 	return buf;
 }
 
+const char *granular_pid_exec(int pid)
+{
+	static char buf[PROC_PIDPATHINFO_MAXSIZE];
+	int mib[3] = { CTL_KERN, KERN_PROCARGS2, pid };
+	size_t size = 0, len;
+	char *args;
+
+	buf[0] = '\0';
+	if (sysctl(mib, 3, NULL, &size, NULL, 0) || size <= sizeof(int))
+		return buf;
+	args = malloc(size);
+	if (!args)
+		return buf;
+	if (!sysctl(mib, 3, args, &size, NULL, 0) && size > sizeof(int)) {
+		len = strnlen(args + sizeof(int), size - sizeof(int));
+		if (len >= sizeof(buf))
+			len = sizeof(buf) - 1;
+		memcpy(buf, args + sizeof(int), len);
+		buf[len] = '\0';
+	}
+	free(args);
+	return buf;
+}
+
 const char *granular_pid_path(int pid)
 {
 	static char buf[PROC_PIDPATHINFO_MAXSIZE];

@@ -6,6 +6,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Added
+- The chain line and the node list show `?claude` for a process whose executable can no longer be read, taking the name from the path the process was started with. The name is for display only and decides nothing.
+
+### Fixed
+- A process whose executable path can no longer be read, such as a `claude` still running after an upgrade replaced its binary, now gets a node in the daemon. Before, it had none, so it stayed on the unknown profile (`ro`) and could not be moved.
+
 ## [0.1.0] - 2026-11-10
 
 ### Added

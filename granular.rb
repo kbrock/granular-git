@@ -2,6 +2,7 @@ module G
   ffi_func :getpid,               [],             :int
   ffi_func :granular_parent_pid,  [:int],         :int
   ffi_func :granular_pid_path,    [:int],         :str
+  ffi_func :granular_pid_exec,    [:int],         :str
   ffi_func :granular_pid_start,   [:int],         :str
   ffi_func :granular_vault,       [:str],         :int
   ffi_func :granular_vault_create, [:str],        :int
@@ -245,7 +246,8 @@ end
 # The daemon's profile for pid. Walking up from the caller, the first process with a profile of its own
 # decides: its slot if one is set, else its app name. With none the default applies. The outermost shell
 # takes a slot when nothing matched, so a person's terminal can be flipped too. A chain that does not
-# reach launchd, or holds a process whose path cannot be read, gets the unknown profile.
+# reach launchd, or holds a process whose path cannot be read, gets the unknown profile. A process whose
+# path cannot be read takes a slot too, so it can be moved.
 def profile_for(pid, nodes)
   chain = ancestors(pid)
   return nodes[UNKNOWN_NODE].profile unless chain.last == 1
@@ -255,7 +257,10 @@ def profile_for(pid, nodes)
   while j < chain.length - 1
     i = node_index(nodes, chain[j])
     return nodes[i].profile if i >= 0 && nodes[i].profile != ""
-    return nodes[UNKNOWN_NODE].profile if G.granular_pid_path(chain[j]) == ""
+    if G.granular_pid_path(chain[j]) == ""
+      claim_slot(nodes, chain[j]) if i < 0
+      return nodes[UNKNOWN_NODE].profile
+    end
     app = app_index(chain[j])
     if app >= 0
       claim_slot(nodes, chain[j]) if i < 0
@@ -270,6 +275,15 @@ def profile_for(pid, nodes)
   nodes[DEFAULT_NODE].profile
 end
 
+# The executable's file name, for display. When the file can no longer be read, the name from the path
+# the process was started with, after a "?", or just "?" if that is gone too. Never used to decide.
+def process_name(pid)
+  name = File.basename(G.granular_pid_path(pid))
+  return name unless name == ""
+  started = File.basename(G.granular_pid_exec(pid))
+  started == "" ? "?" : "?" + started
+end
+
 # The whole chain on one line, outermost first and without launchd: "login > zsh [2] > claude [1] > git".
 # A process that can carry a profile shows its slot number.
 def chain_label(pid, nodes)
@@ -279,8 +293,7 @@ def chain_label(pid, nodes)
   j = chain.length - 1
   while j >= 0
     if chain[j] != 1
-      name = File.basename(G.granular_pid_path(chain[j]))
-      name = "?" if name == ""
+      name = process_name(chain[j])
       n = node_index(nodes, chain[j])
       name = "#{name} [#{n}]" if n >= 0
       label = label == "" ? name : label + " > " + name
@@ -314,7 +327,7 @@ def show_nodes(nodes)
       now = profile_for(nodes[i].pid, nodes)
       cwd = G.granular_pid_cwd(nodes[i].pid)
       cwd = "~" + cwd[home.length..-1] if cwd.start_with?(home)
-      $stderr.puts "  #{i}: #{File.basename(G.granular_pid_path(nodes[i].pid))} pid=#{nodes[i].pid} #{now}  #{cwd}"
+      $stderr.puts "  #{i}: #{process_name(nodes[i].pid)} pid=#{nodes[i].pid} #{now}  #{cwd}"
       shown += 1
     end
     i += 1
