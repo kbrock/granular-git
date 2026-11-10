@@ -38,7 +38,10 @@ APP_NAMES = ["claude", "Claude"]
 LOW_PROFILE = "ro"
 APP_PROFILES = [LOW_PROFILE, LOW_PROFILE]
 DEFAULT_PROFILE = "rw"
+# Two stock rows. default: a chain that reaches launchd with no row of its own (pid 1). unknown: a
+# chain that does not.
 $default_profile = DEFAULT_PROFILE
+$unknown_profile = LOW_PROFILE
 # git and gh ask granular-daemon. true: with no daemon they give no token. false: they decide in their own process.
 REQUIRE_DAEMON = false
 # The keychain file in ~/Library/Keychains that holds the logins.
@@ -204,17 +207,17 @@ end
 # The daemon's profile for pid. Walking up from the caller, the first process with a profile of its own
 # decides: its slot if one is set, else its app row. With none the default applies. The outermost shell
 # takes a slot when nothing matched, so a person's terminal can be flipped too. A chain that does not
-# reach launchd, or holds a process whose path cannot be read, gets LOW_PROFILE.
+# reach launchd, or holds a process whose path cannot be read, gets the unknown profile.
 def profile_for(pid, pids, starts, states)
   chain = ancestors(pid)
-  return LOW_PROFILE unless chain.last == 1
+  return $unknown_profile unless chain.last == 1
   forget_gone(pids, starts, states)
   shell = -1
   j = 0
   while j < chain.length - 1
     i = node_index(pids, chain[j])
     return states[i] if i >= 0 && states[i] != ""
-    return LOW_PROFILE if G.granular_pid_path(chain[j]) == ""
+    return $unknown_profile if G.granular_pid_path(chain[j]) == ""
     row = app_row(chain[j])
     if row >= 0
       claim_slot(pids, starts, states, chain[j]) if i < 0
