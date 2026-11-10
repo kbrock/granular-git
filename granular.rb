@@ -457,18 +457,18 @@ def passwd_ready(host, verbose)
 end
 
 # granular-passwd <profile> <host> [description]: asks for a username and a token.
-def passwd_store(args, verbose)
+def passwd_store(args, verbose, from_stdin)
   profile = args[0]
   host = args[1]
   description = args.length == 3 ? args[2] : ""
   return 1 unless passwd_ready(host, verbose)
-  $stderr.print "Username: "
+  $stderr.print "Username: " unless from_stdin
   user = ($stdin.gets || "").chomp
   if user == "" || user.include?(" ")
     $stderr.puts "granular-passwd: username must be non-empty with no spaces"
     return 1
   end
-  token = G.granular_read_secret("Token: ")
+  token = from_stdin ? ($stdin.gets || "").chomp : G.granular_read_secret("Token: ")
   if token == ""
     $stderr.puts "granular-passwd: no token read"
     return 1
@@ -520,6 +520,7 @@ USAGE = [
   "usage: granular-git [-v] <get|store|erase>",
   "       granular-daemon [-v]",
   "       granular-passwd [-v] <profile> <host> [description]",
+  "       granular-passwd [-v] --stdin <profile> <host> [description]   (username and token as two lines on stdin)",
   "       granular-passwd [-v] --rekey <profile> <host> [description]"
 ]
 if args.length == 1 && (args[0] == "-h" || args[0] == "--help") && program != "git"
@@ -530,8 +531,10 @@ if program == "git" && args.length == 1
   exit git_helper(args[0])
 elsif program == "passwd" && (args.length == 3 || args.length == 4) && args[0] == "--rekey"
   exit passwd_rekey(args, verbose)
+elsif program == "passwd" && (args.length == 3 || args.length == 4) && args[0] == "--stdin"
+  exit passwd_store(args[1..-1], verbose, true)
 elsif program == "passwd" && (args.length == 2 || args.length == 3)
-  exit passwd_store(args, verbose)
+  exit passwd_store(args, verbose, false)
 elsif program == "daemon" && args.length == 0
   exit daemon(verbose)
 end
