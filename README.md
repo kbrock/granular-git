@@ -131,14 +131,14 @@ A prompt appears once per binary per item (`ro` and `rw` are two items). A signe
 
 In your own terminal. On the computer with Spinel:
 ```
-make dist    # builds build/granular.tgz
+make dist    # builds build/granular-<version>.tgz
 ```
 On the computer you are setting up:
 ```
 cd ~/Downloads
-scp src:src/granular-git/build/granular.tgz .
+scp 'src:src/granular-git/build/granular-*.tgz' .
 # basically Spinel's make install
-sudo mkdir -p /usr/local/bin && sudo tar xzf granular.tgz -C /usr/local/bin
+sudo mkdir -p /usr/local/bin && sudo tar xzf granular-*.tgz -C /usr/local/bin
 [ -x /usr/local/bin/granular ] && echo "installed"
 
 # transfer github password to protected vault
