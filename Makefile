@@ -47,12 +47,14 @@ uninstall:
 		rm -f $(PREFIX)/granular
 	rm -f $(addprefix $(PREFIX)/,$(SCRIPTS))
 
-# A tarball of what install puts in PREFIX, links included: sudo tar xzf granular.tgz -C /usr/local/bin
+VERSION := $(shell sed -n 's/^VERSION = "\(.*\)"/\1/p' granular.rb)
+
+# A tarball of what install puts in PREFIX, links included: sudo tar xzf granular-<version>.tgz -C /usr/local/bin
 dist: $(BUILD)/granular
-	rm -rf $(BUILD)/dist
+	rm -rf $(BUILD)/dist $(BUILD)/granular-*.tgz
 	mkdir -p $(BUILD)/dist
 	$(MAKE) install PREFIX=$(BUILD)/dist
-	cd $(BUILD)/dist && tar czf ../granular.tgz *
+	cd $(BUILD)/dist && tar czf ../granular-$(VERSION).tgz *
 
 clean:
 	rm -rf $(BUILD)

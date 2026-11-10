@@ -61,6 +61,8 @@ helper_on_path() { [ -n "$helper" ]; }
 first_gh() { [ "$(readlink -f "$(command -v gh)")" = "$(readlink -f "$helper")" ]; }
 gh_authenticated() { gh api user; }
 
+version=$("${helper:-false}" --version 2>/dev/null)
+echo "granular ${version:-unknown (not installed, or an older build)}"
 echo "git"
 check "credential.helper ends with an empty entry, then granular-git" \
   "git config --global --add credential.helper '' && git config --global --add credential.helper ${helper:-/usr/local/bin/granular-git}" helper_chain
