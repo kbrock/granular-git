@@ -14,6 +14,7 @@ const char *granular_pid_team(int pid);
 
 /* Executable path of pid from a static buffer, or "" if unreadable. */
 const char *granular_pid_path(int pid);
+const char *granular_pid_exec(int pid);
 
 /* Makes path the only keychain that granular_kc_login and granular_kc_set use. Returns -1 if the file
  * cannot be opened. */
