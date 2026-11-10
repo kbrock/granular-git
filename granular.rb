@@ -403,9 +403,17 @@ end
 # Installed as "gh" ahead of the real one on PATH: gets the caller's token from the daemon and
 # runs the real gh with it in GH_TOKEN.
 #
-# gh auth runs without the token, so `gh auth token` has nothing to print. Plain `gh auth status` runs
-# with it: gh shows the token masked. Any extra argument (--show-token, -t) keeps it bare.
+# gh auth runs without the token. Plain `gh auth status` runs with it: gh shows the token masked, and
+# any extra argument (--show-token, -t) keeps it bare. `gh auth token` is refused with the profile's
+# message: the claude code cli asks for the token to call the API itself, and granular does not hand
+# it over.
 def gh_wrapper
+  if ARGV[0] == "auth" && ARGV[1] == "token"
+    held = login_parts(token_reply("github.com", ""))
+    note = held.length == 3 && held[2] != "" ? " " + held[2] : ""
+    $stderr.puts "gh: granular holds the token and does not print it.#{note}"
+    return 1
+  end
   if ARGV[0] == "auth" && !(ARGV.length == 2 && ARGV[1] == "status")
     G.granular_exec(REAL_GH, "GH_TOKEN", "")
     $stderr.puts "gh: cannot run #{REAL_GH}"
