@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-11-10
+
 ### Added
 - `granular-passwd --export <profile> <host>` lets you move key back to the system keychain.
 - `granular-passwd --rekey --all` rekeys every item, so you can prompt key access all at once.
@@ -36,5 +38,6 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - `make dist` builds `build/granular-<version>.tgz` with the installed files, for a computer without Spinel.
 - `granular-git --version`.
 
-[Unreleased]: https://github.com/kbrock/granular-git/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/kbrock/granular-git/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/kbrock/granular-git/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/kbrock/granular-git/releases/tag/v0.1.0

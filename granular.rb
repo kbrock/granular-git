@@ -25,7 +25,7 @@ module G
   ffi_func :granular_write_line,  [:int, :str],   :int
 end
 
-VERSION = "0.1.0"
+VERSION = "0.2.0"
 SELF_PREFIX = "granular-"
 # A login is a Keychain item: service "granular:<profile>:<host>", account = username, secret = token.
 KEYCHAIN_PREFIX = "granular:"
