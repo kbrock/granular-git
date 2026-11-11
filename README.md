@@ -345,3 +345,11 @@ Revoke the `ro` and `rw` tokens at https://github.com/settings/tokens
   - `REQUIRE_DAEMON`: default `false`. `true` makes Git and `gh` give no token when the daemon is not running.
   - `REAL_GH`: the real `gh`, default `/opt/homebrew/opt/gh/bin/gh`. On an Intel Mac use `/usr/local/opt/gh/bin/gh`.
   - `APP_PROFILES`, `DEFAULT_PROFILE`: the table entries.
+- Release. Put the changes under `[Unreleased]` in `CHANGELOG.md`, then:
+  ```sh
+  bin/bump                         # on the feature branch: suggests the version, commits "Release X"
+  # merge the branch into main
+  git checkout main && git pull
+  make release                     # builds the tarball and .sha256, gh tags vX and attaches both
+  ```
+  Run `make release` in your own terminal: it needs the `rw` token. `make release REMOTE=upstream` uses another remote.
