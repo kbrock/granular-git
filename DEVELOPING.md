@@ -1,6 +1,6 @@
 # Developing
 
-## 3. Acceptance criteria
+## Acceptance criteria
 
 Each mark must be turned into a runnable check (exact command, test repository, expected exit code or message).
 
@@ -21,24 +21,24 @@ Each mark must be turned into a runnable check (exact command, test repository, 
 10. One session can be granted an action (for example merge into master) while a second concurrent session stays denied.
 11. An override applies only to the session it was set for and ends when that session ends.
 
-## 9. Test branch (once)
+## Test branch (once)
 
 The tests run in the repo you are standing in, on its current branch. Make a branch for them, so they never touch your working branches. The repo needs an `https://github.com` origin, and you need push access.
 
 Steps:
-1. Have the `ro` and `rw` tokens stored in the vault (Basic mode, steps 2 and 3).
+1. Have the `ro` and `rw` tokens stored in the vault (Create tokens in [INSTALL.md](INSTALL.md)).
 2. Create the branch: `git switch -c granular-test`
 3. In your own terminal, publish it once, so it has an upstream: `git push -u origin granular-test`
    On a public repo the branch is visible.
 4. Run the tests below from this branch. They run `git push --dry-run` and change nothing on GitHub.
 5. When you are done: `git switch -`, then `git branch -D granular-test` and `git push origin --delete granular-test`
 
-## 10. Test: granular-test-ro
+## Test: granular-test-ro
 
 `granular-test-ro` asks: does the read-only profile do what we want? It changes nothing on GitHub; the push is a dry run.
 
 Steps:
-1. Start `claude` on the test branch from section 9. A terminal whose node you moved to `ro` also works.
+1. Start `claude` on the test branch from the Test branch section. A terminal whose node you moved to `ro` also works.
 2. Ask Claude to run `granular-test-ro`.
 
 Checks (PASS or FAIL for each; the script exits 1 if any fails):
@@ -47,12 +47,12 @@ Checks (PASS or FAIL for each; the script exits 1 if any fails):
 - `gh` can read.
 - The `gh` token has no `repo` scope.
 
-## 11. Test: granular-test-rw
+## Test: granular-test-rw
 
 `granular-test-rw` asks: does the read-write profile do what we want? It changes nothing on GitHub; the push is a dry run.
 
 Steps:
-1. Open your own terminal on the test branch from section 9. A Claude session whose node you moved to `rw` also works.
+1. Open your own terminal on the test branch from the Test branch section. A Claude session whose node you moved to `rw` also works.
 2. Run `granular-test-rw`.
 
 Checks (PASS or FAIL for each; the script exits 1 if any fails):
@@ -61,9 +61,9 @@ Checks (PASS or FAIL for each; the script exits 1 if any fails):
 - `gh` can read.
 - The `gh` token has the `repo` scope.
 
-## 12. Test: flipping
+## Test: flipping
 
-A flip is checked by running the two tests either side of it, in one Claude session on the test branch from section 9. A Claude session starts at `ro`. For a terminal, move its node to `ro` first. The flip needs the daemon.
+A flip is checked by running the two tests either side of it, in one Claude session on the test branch from the Test branch section. A Claude session starts at `ro`. For a terminal, move its node to `ro` first. The flip needs the daemon.
 
 Steps:
 1. Start `granular-daemon` in another tab. In the session, run `granular-test-ro`. It passes.
@@ -71,7 +71,7 @@ Steps:
 3. In the session, run `granular-test-rw`. It passes.
 4. Type the node number again. The session is `ro`. Run `granular-test-ro`. It passes.
 
-## 15. Developer
+## Build and release
 
 - Compile: `make link`. Install: `make install`. Remove: `make uninstall`. Clean: `make clean`.
 - Run all three tests after every build. A rebuild signed with the same identity does not prompt again.

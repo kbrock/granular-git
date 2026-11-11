@@ -1,6 +1,6 @@
 # Install
 
-## 4. What a prompt is
+## What a prompt is
 
 A prompt is the macOS dialog that appears when a program asks to read a Keychain item. A new build of granular triggers one the first time it reads each token.
 
@@ -15,7 +15,7 @@ What to press:
 
 A prompt appears once per binary per item (`ro` and `rw` are two items). A signed rebuild keeps the approval. A new signing identity brings the prompts back until you rekey.
 
-## 5. Basic mode, no daemon
+## Basic mode, no daemon
 
 In your own terminal. On the computer with Spinel:
 ```sh
@@ -87,7 +87,7 @@ Each FAIL prints its fix. Run the fixes and the audit again until none fail:
 ```sh
 granular-audit
 ```
-In a clone of a repo you can push to (sections 9 to 11):
+In a clone of a repo you can push to (Test branch and the tests in [DEVELOPING.md](DEVELOPING.md)):
 ```sh
 granular-test-rw    # in your terminal
 granular-test-ro    # in a Claude session
@@ -97,14 +97,14 @@ Git and `gh` now decide in their own process: a `claude` above them gets `ro`, a
 - You gain: Claude's pushes fail and yours work, with nothing else running.
 - You lose: no per-process flipping, and no record of who asked.
 
-## 6. Add the daemon
+## Add the daemon
 
 Type `granular-daemon` in a spare terminal tab and leave it running.
 
 Git and `gh` now ask the daemon over `~/.granular/sock`, and only the daemon reads the Keychain for them. Every request prints the caller's chain on one line, outermost first, with a node number on each process that can carry a profile:
 `login > zsh [3] > claude [2] > node > git > git-remote-https: ro`
 
-- The daemon decides by the profile table (see Mechanism). The first process with a profile decides: a node you moved, else an app name (seeded for `claude` and `Claude.app`). With none the caller gets the default node (`rw`).
+- The daemon decides by the profile table (see Mechanism in [README.md](README.md)). The first process with a profile decides: a node you moved, else an app name (seeded for `claude` and `Claude.app`). With none the caller gets the default node (`rw`).
 - Nodes 2 to 10 go to every matched process the daemon sees and to the outermost shell above it.
 - Type a node number and Enter in the daemon's tab to move that node to the next profile. Enter alone lists the nodes with their pid and working directory. A process shows only after it has made a request or the scan has found a `claude` by name.
 - Node 0 is `not under pid 1` and node 1 is `under pid 1`. Moving node 1 changes what a process with no node of its own gets.
@@ -114,7 +114,7 @@ Git and `gh` now ask the daemon over `~/.granular/sock`, and only the daemon rea
 - You gain: flip one Claude session to `rw` for a task and flip it back, and a line for every request.
 - You lose: one more process to keep running. A Keychain dialog blocks the daemon until it is answered.
 
-## 7. The vault
+## The vault
 
 The tokens live in a keychain file of their own, `~/Library/Keychains/granular.keychain-db`, with its own password.
 
@@ -127,7 +127,7 @@ The first `granular-passwd` run creates it, through a system dialog that asks fo
 - You gain: the tokens sit apart from the rest of your login keychain.
 - You lose: a second password, and a locked vault gives no token until you unlock it.
 
-## 8. Audit
+## Audit
 
 `granular-audit` asks: is this computer configured correctly? It changes nothing. A failure means the environment is wrong, not the program.
 
@@ -139,7 +139,7 @@ Steps:
 
 Some checks read the vault, so a prompt can appear (see What a prompt is). The script exits 1 if any check fails.
 
-## 14. Uninstall
+## Uninstall
 
 Copy and paste each line.
 ```

@@ -1,17 +1,19 @@
 # granular_git
 
-## 1. Goal
+Install and uninstall: [INSTALL.md](INSTALL.md). Tests and release: [DEVELOPING.md](DEVELOPING.md).
+
+## Goal
 
 Claude Code has pushed code several times after being told not to. The existing macOS Keychain credential helper is set to "always allow Git", so any process on the machine, including Claude Code, can use the read-write GitHub token. The fix must not depend on Claude following instructions or on Git hooks.
 
 Use AI more without granting it permissions forever. Claude's permissions are granular: it gets only what a task needs, Buster adds and removes them on the fly, and flipping a permission back is a first-class action. No blanket allow. The end state is a Claude with more permissions than today, each one granted on purpose.
 
-Claude Code gets a read-only token, so `git push` and `gh` writes from it fail. Which token Git receives decides it, not Claude following instructions. This stops accidents, not a hostile process: Claude can start a process outside its own chain and get `rw` (section 13).
+Claude Code gets a read-only token, so `git push` and `gh` writes from it fail. Which token Git receives decides it, not Claude following instructions. This stops accidents, not a hostile process: Claude can start a process outside its own chain and get `rw` (see Limitations).
 Your own terminal pushes with no extra steps.
 
 TODO: add wording here.
 
-## 2. Mechanism
+## Mechanism
 
 A central daemon listens on a Unix domain socket. Callers connect and ask "can I do this". The daemon resolves the caller's PID, walks its parent PIDs to identify the caller, and answers allow or deny.
 
@@ -91,7 +93,7 @@ Not started. `granular-trust` sets the profile of a process by pid, so each Clau
 - Per-project config decides whether Claude commits to master or only to branches.
 - Committing to master is separated from committing to a branch, and from merging master into a branch.
 
-## 13. Limitations
+## Limitations
 
 - The helper answers only `host=github.com`. Other hosts get no helper and git prompts in the terminal.
 - An orphaned process (double fork) reparents to launchd, loses `claude` from the chain, and receives the default profile (`rw`).
