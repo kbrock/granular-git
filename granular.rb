@@ -1,5 +1,6 @@
 module G
   ffi_func :getpid,               [],             :int
+  ffi_func :isatty,               [:int],         :int
   ffi_func :granular_parent_pid,  [:int],         :int
   ffi_func :granular_pid_path,    [:int],         :str
   ffi_func :granular_pid_exec,    [:int],         :str
@@ -24,13 +25,14 @@ module G
   ffi_func :granular_write_line,  [:int, :str],   :int
 end
 
-VERSION = "0.1.0"
+VERSION = "0.2.0"
 SELF_PREFIX = "granular-"
 # A login is a Keychain item: service "granular:<profile>:<host>", account = username, secret = token.
 KEYCHAIN_PREFIX = "granular:"
 
 MAX_DEPTH = 64
 HOSTS = ["github.com"]
+APPLETS = ["git", "passwd", "daemon", "gh"]
 SHELLS = ["sh", "bash", "zsh", "fish", "dash", "ksh", "tcsh"]
 # App names, matched by the executable's file name: the claude CLI and Claude.app. The nearest process
 # above the caller with a name or a profile of its own decides.
@@ -421,14 +423,14 @@ end
 # any extra argument (--show-token, -t) keeps it bare. `gh auth token` is refused with the profile's
 # message: the claude code cli asks for the token to call the API itself, and granular does not hand
 # it over.
-def gh_wrapper
-  if ARGV[0] == "auth" && ARGV[1] == "token"
+def gh_wrapper(args)
+  if args[0] == "auth" && args[1] == "token"
     held = login_parts(token_reply("github.com", ""))
     note = held.length == 3 && held[2] != "" ? " " + held[2] : ""
     $stderr.puts "gh: granular holds the token and does not print it.#{note}"
     return 1
   end
-  if ARGV[0] == "auth" && !(ARGV.length == 2 && ARGV[1] == "status")
+  if args[0] == "auth" && !(args.length == 2 && args[1] == "status")
     G.granular_exec(REAL_GH, "GH_TOKEN", "")
     $stderr.puts "gh: cannot run #{REAL_GH}"
     return 1
@@ -439,7 +441,7 @@ def gh_wrapper
     $stderr.puts "gh: #{reply == "" ? "no reply from daemon" : reply}"
     return 1
   end
-  $stderr.puts "granular: " + login[2] if ARGV[0] == "auth" && login[2] != ""
+  $stderr.puts "granular: " + login[2] if args[0] == "auth" && login[2] != ""
   G.granular_exec(REAL_GH, "GH_TOKEN", login[1])
   $stderr.puts "gh: cannot run #{REAL_GH}"
   1
@@ -492,19 +494,54 @@ end
 
 # granular-passwd --rekey <profile> <host> [description]: stores the item again with its own user and
 # token, so its access list names this build. Without a description the old one is kept.
-def passwd_rekey(args, verbose)
+def passwd_rekey(args, verbose, quiet)
   profile = args[1]
   host = args[2]
   return 1 unless passwd_ready(host, verbose)
   item = KEYCHAIN_PREFIX + profile + ":" + host
   words = G.granular_kc_login(item, "").split(" ")
   if words.length < 2
-    $stderr.puts "granular-passwd: no #{profile} item for #{host}"
-    return 1
+    $stderr.puts "granular-passwd: no #{profile} item for #{host}" unless quiet
+    return quiet ? 2 : 1
   end
   description = words.length > 2 ? words[2..-1].join(" ") : ""
   description = args[3] if args.length == 4
   passwd_write(item, words[0], words[1], description, verbose)
+end
+
+# granular-passwd --rekey --all: rekeys every item that exists, one prompt each, so they come together.
+def passwd_rekey_all(verbose)
+  return 1 unless passwd_ready(HOSTS[0], verbose)
+  status = 0
+  $profiles.each do |profile|
+    HOSTS.each do |host|
+      result = passwd_rekey(["--rekey", profile, host], verbose, true)
+      next if result == 2
+      status = 1 if result != 0
+      $stderr.puts "granular-passwd: rekeyed #{profile} #{host}" if result == 0
+    end
+  end
+  status
+end
+
+# granular-passwd --export <profile> <host>: writes the username and the token as two lines, for a pipe
+# into --stdin or into git credential-osxkeychain. It will not write to a terminal.
+def passwd_export(args, verbose)
+  profile = args[1]
+  host = args[2]
+  if G.isatty(1) != 0
+    $stderr.puts "granular-passwd: --export writes to a pipe, not a terminal"
+    return 1
+  end
+  return 1 unless passwd_ready(host, verbose)
+  words = G.granular_kc_login(KEYCHAIN_PREFIX + profile + ":" + host, "").split(" ")
+  if words.length < 2
+    $stderr.puts "granular-passwd: no #{profile} item for #{host}"
+    return 1
+  end
+  puts words[0]
+  puts words[1]
+  0
 end
 
 # Stores the item and reads it back.
@@ -522,8 +559,13 @@ def passwd_write(item, user, token, description, verbose)
 end
 
 name = File.basename($0)
-exit gh_wrapper if name == "gh"
 args = ARGV
+# granular <applet> ...: the same as running through the link of that name.
+if name == "granular" && args.length > 0 && APPLETS.include?(args[0])
+  name = args[0] == "gh" ? "gh" : SELF_PREFIX + args[0]
+  args = args[1..-1]
+end
+exit gh_wrapper(args) if name == "gh"
 verbose = false
 if args[0] == "-v"
   verbose = true
@@ -536,9 +578,13 @@ USAGE = [
   "       granular-daemon [-v]",
   "       granular-passwd [-v] <profile> <host> [description]",
   "       granular-passwd [-v] --stdin <profile> <host> [description]   (username and token as two lines on stdin)",
-  "       granular-passwd [-v] --rekey <profile> <host> [description]"
+  "       granular-passwd [-v] --rekey <profile> <host> [description]",
+  "       granular-passwd [-v] --rekey --all",
+  "       granular-passwd [-v] --export <profile> <host>   (username and token as two lines, to a pipe)",
+  "       granular <git|passwd|daemon|gh> ...   (the same, without the link)",
+  "       granular --version"
 ]
-if args.length == 1 && args[0] == "--version" && program != ""
+if args.length == 1 && args[0] == "--version"
   puts VERSION
   exit 0
 end
@@ -548,8 +594,12 @@ if args.length == 1 && (args[0] == "-h" || args[0] == "--help") && program != "g
 end
 if program == "git" && args.length == 1
   exit git_helper(args[0])
+elsif program == "passwd" && args.length == 2 && args[0] == "--rekey" && args[1] == "--all"
+  exit passwd_rekey_all(verbose)
+elsif program == "passwd" && args.length == 3 && args[0] == "--export"
+  exit passwd_export(args, verbose)
 elsif program == "passwd" && (args.length == 3 || args.length == 4) && args[0] == "--rekey"
-  exit passwd_rekey(args, verbose)
+  exit passwd_rekey(args, verbose, false)
 elsif program == "passwd" && (args.length == 3 || args.length == 4) && args[0] == "--stdin"
   exit passwd_store(args[1..-1], verbose, true)
 elsif program == "passwd" && (args.length == 2 || args.length == 3)

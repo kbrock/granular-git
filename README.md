@@ -6,7 +6,7 @@ Claude Code has pushed code several times after being told not to. The existing 
 
 Use AI more without granting it permissions forever. Claude's permissions are granular: it gets only what a task needs, Buster adds and removes them on the fly, and flipping a permission back is a first-class action. No blanket allow. The end state is a Claude with more permissions than today, each one granted on purpose.
 
-Claude Code can never push to GitHub. Which token Git receives decides it, not Claude following instructions.
+Claude Code gets a read-only token, so `git push` and `gh` writes from it fail. Which token Git receives decides it, not Claude following instructions. This stops accidents, not a hostile process: Claude can start a process outside its own chain and get `rw` (section 13).
 Your own terminal pushes with no extra steps.
 
 TODO: add wording here.
@@ -130,26 +130,29 @@ A prompt appears once per binary per item (`ro` and `rw` are two items). A signe
 ## 5. Basic mode, no daemon
 
 In your own terminal. On the computer with Spinel:
+```sh
+make dist    # builds build/granular-<version>.tgz and its .sha256
 ```
-make dist    # builds build/granular-<version>.tgz
-```
+The first `make` runs `sign-identity.sh`, which makes a self-signed code-signing certificate in your login keychain and trusts it for code signing. macOS asks for your password.
+
 On the computer you are setting up:
-```
+```sh
 cd ~/Downloads
-scp 'src:src/granular-git/build/granular-*.tgz' .
-# basically Spinel's make install
-sudo mkdir -p /usr/local/bin && sudo tar xzf granular-*.tgz -C /usr/local/bin
+scp 'host:src/granular-git/build/granular-*' .
+# basically Spinel's make install, after the checksum matches
+shasum -a 256 -c granular-*.tgz.sha256 && sudo mkdir -p /usr/local/bin && sudo tar xzf granular-*.tgz -C /usr/local/bin
 [ -x /usr/local/bin/granular ] && echo "installed"
 
-# transfer github password to protected vault
-# copy and paste each line. macOS asks to read the item: click Allow, never Always Allow
+# If you have a password in your System vault (if you use git you probably do)
+# You can transfer github password to the new protected vault
+# copy and paste each line. macOS asks to read the item: click Allow, not Always Allow
 user=$(security find-internet-password -s github.com | sed -n 's/.*"acct"<blob>="\(.*\)"/\1/p')
 pw=$(security find-internet-password -s github.com -w)
-# first time: you will enter a password for your vault. this is similar to an aws-vault setup
+# first time: you will enter a password for your new vault. This is similar to an aws-vault setup
 printf '%s\n%s\n' "$user" "$pw" | granular-passwd --stdin rw github.com
 unset pw
 
-# clear password from system vault (checks that you have it before deleting)
+# clear password from system vault (checks that you have it in new vault before deleting)
 security find-generic-password -s granular:rw:github.com ~/Library/Keychains/granular.keychain-db >/dev/null && printf "protocol=https\nhost=github.com\n\n" | git credential-osxkeychain erase
 ```
 
@@ -159,29 +162,45 @@ security find-generic-password -s granular:rw:github.com ~/Library/Keychains/gra
 
 1. Create the `ro` token. Claude gets this one.
    a. Open https://github.com/settings/personal-access-tokens/new
-   b. Name `granular-ro`. Resource owner: you (or company). Repository access: All repositories. Permissions: Contents, Pull requests and Issues, each read. Click Generate token and copy it.
-   c. `granular-passwd ro github.com "You don't currently have access to push to github. Stop and ask for access."`
-      Enter your GitHub username, then paste the token.
+   b. Name `granular-ro`. Resource owner: you (or company). Repository access: All repositories. Permissions: Contents, Pull requests and Issues, each read. Click Generate token, then the copy icon.
+   c.
+   ```sh
+   granular-passwd ro github.com "You don't currently have access to push to github. Stop and ask for access."
+   # enter your github username, Cmd-V to paste the token
+   ```
 2. Create the `rw` token. Your terminal gets this one.
    a. Open https://github.com/settings/tokens/new
-   b. Note `granular-rw`. Tick `repo`. Click Generate token and copy it.
-   c. `granular-passwd rw github.com`
-      Enter your GitHub username, then paste the token.
+   b. Note `granular-rw`. Tick `repo`. Click Generate token, then the copy icon.
+   c.
+   ```sh
+   granular-passwd rw github.com
+   # enter your github username, Cmd-V to paste the token
+   ```
 
 2b. Create a fine-grained `rw` token instead. It pushes to one owner.
    a. Open https://github.com/settings/personal-access-tokens/new
-   b. Name `granular-rw`. Resource owner: the owner you push to. Repository access: Only select repositories. Permissions: Contents and Pull requests, each read and write. Click Generate token and copy it.
-   c. `granular-passwd rw github.com`
-      Enter your GitHub username, then paste the token.
+   b. Name `granular-rw`. Resource owner: the owner you push to. Repository access: Only select repositories. Permissions: Contents and Pull requests, each read and write. Click Generate token, then the copy icon.
+   c.
+   ```sh
+   granular-passwd rw github.com
+   # enter your github username, Cmd-V to paste the token
+   ```
+
+### Upgrade
+
+Install the new tarball as above, restart the daemon, then rekey so the items name the new build:
+```sh
+granular-passwd --rekey --all
+```
 
 ### Audit and test
 
 Each FAIL prints its fix. Run the fixes and the audit again until none fail:
-```
+```sh
 granular-audit
 ```
 In a clone of a repo you can push to (sections 9 to 11):
-```
+```sh
 granular-test-rw    # in your terminal
 granular-test-ro    # in a Claude session
 ```
@@ -215,7 +234,7 @@ The first `granular-passwd` run creates it, through a system dialog that asks fo
 
 - It relocks after a day and stays unlocked through sleep. Unlock it from any terminal: `security unlock-keychain ~/Library/Keychains/granular.keychain-db`
 - Each login is an item: service `granular:<profile>:<host>`, account the username, secret the token. Git and `gh` share them.
-- Rekey an item: `granular-passwd --rekey <profile> <host> [description]` reads the stored login, deletes the item and adds it again from the current build. Run it when a vault item prompts after a rebuild or a change of signing identity, because an item's access list names the build that stored it. It also changes the message with no token to paste: a given description replaces the old one, `""` clears it, and none keeps it.
+- Rekey every item: `granular-passwd --rekey --all`. Rekey one item: `granular-passwd --rekey <profile> <host> [description]` reads the stored login, deletes the item and adds it again from the current build. Run it when a vault item prompts after a rebuild or a change of signing identity, because an item's access list names the build that stored it. It also changes the message with no token to paste: a given description replaces the old one, `""` clears it, and none keeps it.
 
 - You gain: the tokens sit apart from the rest of your login keychain.
 - You lose: a second password, and a locked vault gives no token until you unlock it.
@@ -303,17 +322,13 @@ Steps:
 Copy and paste each line.
 ```
 # copy rw back to the system vault (asks for your vault password)
-vault=~/Library/Keychains/granular.keychain-db
-user=$(security find-generic-password -s granular:rw:github.com $vault | sed -n 's/.*"acct"<blob>="\(.*\)"/\1/p')
-pw=$(security find-generic-password -s granular:rw:github.com -w $vault)
-printf 'protocol=https\nhost=github.com\nusername=%s\npassword=%s\n\n' "$user" "$pw" | git credential-osxkeychain store
-unset pw
+granular-passwd --export rw github.com | { read -r user && read -r pw && [ -n "$pw" ] && printf 'protocol=https\nhost=github.com\nusername=%s\npassword=%s\n\n' "$user" "$pw" | git credential-osxkeychain store; }
 
 # stop the daemon (Ctrl-C in its tab), then remove everything
 rm -rf ~/.granular
 sudo rm /usr/local/bin/{granular,granular-git,granular-passwd,granular-daemon,gh,granular-audit,granular-test-ro,granular-test-rw}
 git config --global --unset-all credential.helper
-git config --global --add credential.helper osxkeychain
+# git config --global --add credential.helper osxkeychain    # only if your Xcode git does not already have it
 brew link gh    # then: gh auth login
 
 # delete the vault. cannot be undone: the tokens are gone

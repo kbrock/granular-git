@@ -1,0 +1,56 @@
+#!/usr/bin/env ruby
+# bin/bump [-y] [major|minor|patch|X.Y.Z]: turns [Unreleased] in CHANGELOG.md into the next version and sets
+# VERSION in granular.rb. With no argument it suggests the level from the headings under [Unreleased].
+# It prints what the release contains and asks to confirm; -y skips the question.
+# It edits two files and commits them as "Release X" with the changelog entries in the message.
+# It does not tag or push.
+require "date"
+
+ROOT = File.expand_path("..", __dir__)
+LOG = File.join(ROOT, "CHANGELOG.md")
+RB = File.join(ROOT, "granular.rb")
+LEVEL = { "Breaking" => :major, "Removed" => :major, "Added" => :minor }
+WHAT = { "Breaking" => "a breaking change", "Removed" => "a removal", "Added" => "new features", "Changed" => "changes",
+         "Fixed" => "bug fixes", "Security" => "security fixes", "Deprecated" => "deprecations" }
+RANK = %i[patch minor major]
+
+other = `git -C #{ROOT} status --porcelain --untracked-files=no 2>/dev/null`.lines.reject { |l| l =~ /CHANGELOG\.md|granular\.rb/ }
+abort "bump: commit or stash these first:\n#{other.join}" unless other.empty?
+
+text = File.read(LOG)
+current = File.read(RB)[/^VERSION = "(.*)"/, 1] or abort "bump: no VERSION in granular.rb"
+body = text[/^## \[Unreleased\]\n(.*?)(?=^## \[)/m, 1].to_s
+names = body.split(/^### /).drop(1).select { |s| s.lines.drop(1).any? { |l| l.start_with?("-") } }.map { |s| s.lines.first.strip }
+abort "bump: nothing under [Unreleased]" if names.empty?
+
+maj, min, pat = current.split(".").map(&:to_i)
+yes = ARGV.delete("-y")
+arg = ARGV[0]
+if arg =~ /\A\d+\.\d+\.\d+\z/
+  new = arg
+else
+  level = arg ? arg.to_sym : names.map { |n| LEVEL.fetch(n, :patch) }.max_by { |l| RANK.index(l) }
+  abort "usage: bin/bump [-y] [major|minor|patch|X.Y.Z]" unless RANK.include?(level)
+  level = :minor if arg.nil? && level == :major && maj == 0
+  new = { major: "#{maj + 1}.0.0", minor: "#{maj}.#{min + 1}.0", patch: "#{maj}.#{min}.#{pat + 1}" }[level]
+end
+puts "contains #{names.map { |n| WHAT.fetch(n, n) }.join(", ")}"
+
+unless yes
+  print "#{current} -> #{new}? [y/N] "
+  abort "bump: stopped" unless $stdin.gets.to_s.strip.downcase == "y"
+end
+
+text.sub!(/^## \[Unreleased\]\n/) { "## [Unreleased]\n\n## [#{new}] - #{Date.today}\n" }
+text.sub!(/^\[Unreleased\]: (\S+)\/compare\/v\S+\.\.\.HEAD$/) do
+  "[Unreleased]: #{$1}/compare/v#{new}...HEAD\n[#{new}]: #{$1}/compare/v#{current}...v#{new}"
+end or abort "bump: no [Unreleased] compare link in CHANGELOG.md"
+File.write(LOG, text)
+File.write(RB, File.read(RB).sub(/^VERSION = ".*"/, %(VERSION = "#{new}")))
+
+# The commit message lists what the release contains, so git log shows it. Git drops lines that start
+# with #, so the headings are underlined instead.
+entries = text[/^## \[#{Regexp.escape(new)}\][^\n]*\n(.*?)(?=^## \[|^\[)/m, 1].to_s.strip.gsub(/^### (.*)$/) { "#{$1}\n---" }
+IO.popen(["git", "-C", ROOT, "commit", "-q", "-a", "-F", "-"], "w") { |io| io.write("Release #{new}\n\n#{entries}\n") }
+abort "bump: git commit failed" unless $?.success?
+puts "bump: committed Release #{new}. Merge it, then make release. Undo with: git reset HEAD~1"
