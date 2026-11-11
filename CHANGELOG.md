@@ -7,22 +7,33 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 ## [Unreleased]
 
 ### Added
-- The chain line and the node list show `?claude` for a process whose executable can no longer be read, taking the name from the path the process was started with. The name is for display only and decides nothing.
+- `granular-passwd --export <profile> <host>` lets you move key back to the system keychain.
+- `granular-passwd --rekey --all` rekeys every item, so you can prompt key access all at once.
+- `granular git|passwd|daemon|gh ...`. run all sub-commands through granular
+- `granular --version` prints the version.
+- `make dist` writes a `.sha256` next to the tarball, and the install steps check it.
+- The node list now shows `?claude` for a binary no longer on disk (i.e.: command was updated)
+
+### Changed
+- `granular-audit` - the `ro` fix includes the message.
+- Uninstall documentaton no longer adds the `osxkeychain` helper back.
+- The README says what the tool does not stop: a process Claude starts outside its own chain still gets `rw`.
 
 ### Fixed
-- A process whose executable path can no longer be read, such as a `claude` still running after an upgrade replaced its binary, now gets a node in the daemon. Before, it had none, so it stayed on the unknown profile (`ro`) and could not be moved.
+- `granular-audit` no longer shows duplicate failures.
+- `granular-daemon` A process whose path is unreadable, can be referenced and profile changed.
 
 ## [0.1.0] - 2026-11-10
 
 ### Added
 - `granular-git`, a Git credential helper. A process under `claude` gets the `ro` token and everything else gets the `rw` token, decided by the caller's process ancestry.
-- `granular-daemon`, which keeps a table of nodes: a pid with its start time, plus two catch-alls for every process under pid 1 and every process not under it. Typing a node number in the daemon's tab moves that node to the next profile, and a new profile name joins the cycle.
-- A `gh` wrapper that runs the real `gh` with the caller's token. `gh auth status` prints the profile's message, and `gh auth token` is refused.
-- `granular-passwd` stores a login in the vault with a message for the profile. `--rekey` re-adds an item from the current build, and `--stdin` reads the username and token from a pipe. It refuses to run under Claude.
+- `granular-daemon`, allows you to change git permissions for running processes.
+- A `gh` wrapper that runs the real `gh` with the caller's token. `gh auth token` doesn't hand Claude a token (Claude does't like this).
+- `granular-passwd` stores a login in the vault with an optional message for the profile. `--rekey` allows you to change keys, messges, and signature. It refuses to run under Claude.
 - A keychain of its own for the tokens, `~/Library/Keychains/granular.keychain-db`.
-- `granular-audit`, which checks the computer's setup and prints a fix for each failure, and prints the installed version.
-- `granular-test-ro` and `granular-test-rw`, which check what each profile can do.
-- `make dist`, which builds `build/granular-<version>.tgz` with the installed files, for a computer without Spinel.
+- `granular-audit`, which checks the computer's setup and prints a fix for each failure.
+- `granular-test-ro` and `granular-test-rw` check the current shell's permission.
+- `make dist` builds `build/granular-<version>.tgz` with the installed files, for a computer without Spinel.
 - `granular-git --version`.
 
 [Unreleased]: https://github.com/kbrock/granular-git/compare/v0.1.0...HEAD
