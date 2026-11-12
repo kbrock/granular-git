@@ -123,6 +123,7 @@ The first `granular-passwd` run creates it, through a system dialog that asks fo
 - It relocks after a day and stays unlocked through sleep. Unlock it from any terminal: `security unlock-keychain ~/Library/Keychains/granular.keychain-db`
 - Each login is an item: service `granular:<profile>:<host>`, account the username, secret the token. Git and `gh` share them.
 - Rekey every item: `granular-passwd --rekey --all`. Rekey one item: `granular-passwd --rekey <profile> <host> [description]` reads the stored login, deletes the item and adds it again from the current build. Run it when a vault item prompts after a rebuild or a change of signing identity, because an item's access list names the build that stored it. It also changes the message with no token to paste: a given description replaces the old one, `""` clears it, and none keeps it.
+- `granular-git` never saves. Git's `store` and `erase` calls do nothing, so a token typed at a git prompt is lost. Add or change a token with `granular-passwd <profile> github.com`.
 
 - You gain: the tokens sit apart from the rest of your login keychain.
 - You lose: a second password, and a locked vault gives no token until you unlock it.
