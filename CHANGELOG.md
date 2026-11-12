@@ -6,6 +6,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Changed
+- `granular-git` no longer prints `store ignored` after a push. `store` and `erase` still do nothing, and INSTALL.md says so: add or change a token with `granular-passwd`.
+
 ## [0.2.0] - 2026-11-10
 
 ### Added

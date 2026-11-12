@@ -155,7 +155,7 @@ def ask_daemon(host, user)
 end
 
 def git_helper(action)
-  $stderr.puts "granular-git: store ignored" if action == "store"
+  # $stderr.puts "granular-git: store ignored" if action == "store"
   return 0 unless action == "get"
 
   host = ""
