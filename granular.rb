@@ -9,6 +9,9 @@ module G
   ffi_func :granular_vault_create, [:str],        :int
   ffi_func :granular_kc_login,    [:str, :str],   :str
   ffi_func :granular_kc_set,      [:str, :str, :str, :str], :int
+  ffi_func :granular_kc_list_open, [:str],        :int
+  ffi_func :granular_kc_list_get, [:int],         :str
+  ffi_func :granular_kc_list_close, [],           :int
   ffi_func :granular_read_secret, [:str],         :str
   ffi_func :granular_private_dir, [:str],         :int
   ffi_func :granular_listen,      [:str],         :int
@@ -31,7 +34,6 @@ SELF_PREFIX = "granular-"
 KEYCHAIN_PREFIX = "granular:"
 
 MAX_DEPTH = 64
-HOSTS = ["github.com"]
 APPLETS = ["git", "passwd", "daemon", "gh"]
 SHELLS = ["sh", "bash", "zsh", "fish", "dash", "ksh", "tcsh"]
 # App names, matched by the executable's file name: the claude CLI and Claude.app. The nearest process
@@ -166,9 +168,13 @@ def git_helper(action)
     host = line[5..-1] if line.start_with?("host=")
     user = line[9..-1] if line.start_with?("username=")
   end
-  return 0 unless HOSTS.include?(host)
+  return 0 if host == ""
 
   reply = token_reply(host, user)
+  if reply.start_with?("deny no item ")
+    $stderr.puts "granular: no token for #{host} profile #{reply[13..-1]}"
+    return 0
+  end
   login = login_parts(reply)
   if login.length != 3
     $stderr.puts "granular-git: #{reply == "" ? "no reply from daemon" : reply}"
@@ -196,11 +202,9 @@ end
 def reply_for(request, profile)
   words = request.split(" ")
   return "deny bad request" unless (words.length == 2 || words.length == 3) && words[0] == "get"
-  return "deny unknown host" unless HOSTS.include?(words[1])
-
   return "deny no vault" if open_vault != 0
   login = G.granular_kc_login(KEYCHAIN_PREFIX + profile + ":" + words[1], words.length == 3 ? words[2] : "")
-  return "deny no item" if login == ""
+  return "deny no item " + profile if login == ""
   "ok " + login
 end
 
@@ -459,14 +463,10 @@ def ensure_vault
   true
 end
 
-# Checks shared by every granular-passwd form: not under Claude, a known host, the vault is there.
-def passwd_ready(host, verbose)
+# Checks shared by every granular-passwd form: not under Claude, the vault is there.
+def passwd_ready(verbose)
   if locked_above(G.getpid, verbose) != 0
     $stderr.puts "granular-passwd: refusing to run under Claude or an unknown caller"
-    return false
-  end
-  unless HOSTS.include?(host)
-    $stderr.puts "granular-passwd: unknown host #{host}"
     return false
   end
   ensure_vault
@@ -477,7 +477,7 @@ def passwd_store(args, verbose, from_stdin)
   profile = args[0]
   host = args[1]
   description = args.length == 3 ? args[2] : ""
-  return 1 unless passwd_ready(host, verbose)
+  return 1 unless passwd_ready(verbose)
   $stderr.print "Username: " unless from_stdin
   user = ($stdin.gets || "").chomp
   if user == "" || user.include?(" ")
@@ -497,7 +497,7 @@ end
 def passwd_rekey(args, verbose, quiet)
   profile = args[1]
   host = args[2]
-  return 1 unless passwd_ready(host, verbose)
+  return 1 unless passwd_ready(verbose)
   item = KEYCHAIN_PREFIX + profile + ":" + host
   words = G.granular_kc_login(item, "").split(" ")
   if words.length < 2
@@ -509,17 +509,28 @@ def passwd_rekey(args, verbose, quiet)
   passwd_write(item, words[0], words[1], description, verbose)
 end
 
+# Yields the profile and host of each item in the vault.
+def each_item
+  n = G.granular_kc_list_open(KEYCHAIN_PREFIX)
+  n.times do |i|
+    name = G.granular_kc_list_get(i)
+    next if name == ""
+    rest = name[KEYCHAIN_PREFIX.length..-1]
+    colon = rest.index(":")
+    yield rest[0, colon], rest[colon + 1..-1] if colon
+  end
+  G.granular_kc_list_close
+end
+
 # granular-passwd --rekey --all: rekeys every item that exists, one prompt each, so they come together.
 def passwd_rekey_all(verbose)
-  return 1 unless passwd_ready(HOSTS[0], verbose)
+  return 1 unless passwd_ready(verbose)
   status = 0
-  $profiles.each do |profile|
-    HOSTS.each do |host|
-      result = passwd_rekey(["--rekey", profile, host], verbose, true)
-      next if result == 2
-      status = 1 if result != 0
-      $stderr.puts "granular-passwd: rekeyed #{profile} #{host}" if result == 0
-    end
+  each_item do |profile, host|
+    result = passwd_rekey(["--rekey", profile, host], verbose, true)
+    next if result == 2
+    status = 1 if result != 0
+    $stderr.puts "granular-passwd: rekeyed #{profile} #{host}" if result == 0
   end
   status
 end
@@ -533,7 +544,7 @@ def passwd_export(args, verbose)
     $stderr.puts "granular-passwd: --export writes to a pipe, not a terminal"
     return 1
   end
-  return 1 unless passwd_ready(host, verbose)
+  return 1 unless passwd_ready(verbose)
   words = G.granular_kc_login(KEYCHAIN_PREFIX + profile + ":" + host, "").split(" ")
   if words.length < 2
     $stderr.puts "granular-passwd: no #{profile} item for #{host}"

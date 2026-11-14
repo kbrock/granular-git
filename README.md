@@ -1,19 +1,16 @@
 # granular_git
 
-Install and uninstall: [INSTALL.md](INSTALL.md). Tests and release: [DEVELOPING.md](DEVELOPING.md).
+Install and uninstall: [INSTALL.md](INSTALL.md).
+Tests and release: [DEVELOPING.md](DEVELOPING.md).
 
 ## Goal
 
-Claude Code has pushed code several times after being told not to. The existing macOS Keychain credential helper is set to "always allow Git", so any process on the machine, including Claude Code, can use the read-write GitHub token. The fix must not depend on Claude following instructions or on Git hooks.
-
-Use AI more without granting it permissions forever. Claude's permissions are granular: it gets only what a task needs, Buster adds and removes them on the fly, and flipping a permission back is a first-class action. No blanket allow. The end state is a Claude with more permissions than today, each one granted on purpose.
-
-Claude Code gets a read-only token, so `git push` and `gh` writes from it fail. Which token Git receives decides it, not Claude following instructions. This stops accidents, not a hostile process: Claude can start a process outside its own chain and get `rw` (see Limitations).
-Your own terminal pushes with no extra steps.
-
-TODO: add wording here.
+Grant git keys per shell or Claude session. So you can let claude temporarily read from github
+You can also change the permissions turn by turn so granting a git push once doesn't allow it forever.
 
 ## Mechanism
+
+Think per process claude code hooks, but in git itself.
 
 A central daemon listens on a Unix domain socket. Callers connect and ask "can I do this". The daemon resolves the caller's PID, walks its parent PIDs to identify the caller, and answers allow or deny.
 
@@ -95,7 +92,7 @@ Not started. `granular-trust` sets the profile of a process by pid, so each Clau
 
 ## Limitations
 
-- The helper answers only `host=github.com`. Other hosts get no helper and git prompts in the terminal.
+- The helper answers a host only when the vault holds a token for it under the caller's profile. Any other host gets no token and git prompts in the terminal. The `gh` wrapper covers github.com only.
 - An orphaned process (double fork) reparents to launchd, loses `claude` from the chain, and receives the default profile (`rw`).
 - The `rw` token is a classic `repo` token, so a node moved to `rw` gives Claude every repo the account can push to.
 - The Spinel build holds the token in a Ruby string and does not wipe it.

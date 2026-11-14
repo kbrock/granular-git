@@ -298,6 +298,47 @@ const char *granular_kc_login(const char *service, const char *account)
 	return buf;
 }
 
+static CFArrayRef listed;
+static char list_prefix[128];
+
+int granular_kc_list_close(void)
+{
+	if (listed)
+		CFRelease(listed);
+	listed = NULL;
+	return 0;
+}
+
+int granular_kc_list_open(const char *prefix)
+{
+	CFMutableDictionaryRef q = item_query("", NULL);
+
+	granular_kc_list_close();
+	snprintf(list_prefix, sizeof(list_prefix), "%s", prefix);
+	CFDictionaryRemoveValue(q, kSecAttrService);
+	CFDictionarySetValue(q, kSecReturnAttributes, kCFBooleanTrue);
+	CFDictionarySetValue(q, kSecMatchLimit, kSecMatchLimitAll);
+	if (SecItemCopyMatching(q, (CFTypeRef *)&listed) != errSecSuccess)
+		listed = NULL;
+	CFRelease(q);
+	return listed ? (int)CFArrayGetCount(listed) : 0;
+}
+
+const char *granular_kc_list_get(int i)
+{
+	static char name[256];
+	CFStringRef s;
+
+	name[0] = '\0';
+	if (!listed || i < 0 || i >= CFArrayGetCount(listed))
+		return name;
+	s = CFDictionaryGetValue(CFArrayGetValueAtIndex(listed, i), kSecAttrService);
+	if (!s || !CFStringGetCString(s, name, sizeof(name), kCFStringEncodingUTF8) ||
+	    strncmp(name, list_prefix, strlen(list_prefix)))
+		name[0] = '\0';
+	return name;
+}
+
 const char *granular_read_secret(const char *prompt)
 {
 	static char buf[512];

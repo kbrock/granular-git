@@ -108,7 +108,7 @@ Git and `gh` now ask the daemon over `~/.granular/sock`, and only the daemon rea
 - Nodes 2 to 10 go to every matched process the daemon sees and to the outermost shell above it.
 - Type a node number and Enter in the daemon's tab to move that node to the next profile. Enter alone lists the nodes with their pid and working directory. A process shows only after it has made a request or the scan has found a `claude` by name.
 - Node 0 is `not under pid 1` and node 1 is `under pid 1`. Moving node 1 changes what a process with no node of its own gets.
-- Type a new profile name (a letter, then letters, digits, `-` or `_`) and Enter to add it to the end of the cycle. Store its token with `granular-passwd <name> github.com`. A profile with no token answers `deny no item`.
+- Type a new profile name (a letter, then letters, digits, `-` or `_`) and Enter to add it to the end of the cycle. Store its token with `granular-passwd <name> github.com`. A profile with no token for a host prints `granular: no token for <host> profile <name>`, and git falls through to its own prompt.
 - A node is freed when its process exits, and its number is reused.
 
 - You gain: flip one Claude session to `rw` for a task and flip it back, and a line for every request.
@@ -122,7 +122,8 @@ The first `granular-passwd` run creates it, through a system dialog that asks fo
 
 - It relocks after a day and stays unlocked through sleep. Unlock it from any terminal: `security unlock-keychain ~/Library/Keychains/granular.keychain-db`
 - Each login is an item: service `granular:<profile>:<host>`, account the username, secret the token. Git and `gh` share them.
-- Rekey every item: `granular-passwd --rekey --all`. Rekey one item: `granular-passwd --rekey <profile> <host> [description]` reads the stored login, deletes the item and adds it again from the current build. Run it when a vault item prompts after a rebuild or a change of signing identity, because an item's access list names the build that stored it. It also changes the message with no token to paste: a given description replaces the old one, `""` clears it, and none keeps it.
+- Any host works: `granular-git` serves a host when the vault holds an item for it under the caller's profile, such as `granular-passwd rw gitlab.com`. A host with no item gets no token. The `gh` wrapper covers github.com only.
+- Rekey every item: `granular-passwd --rekey --all` rekeys each `granular:*` item in the vault. Rekey one item: `granular-passwd --rekey <profile> <host> [description]` reads the stored login, deletes the item and adds it again from the current build. Run it when a vault item prompts after a rebuild or a change of signing identity, because an item's access list names the build that stored it. It also changes the message with no token to paste: a given description replaces the old one, `""` clears it, and none keeps it.
 - `granular-git` never saves. Git's `store` and `erase` calls do nothing, so a token typed at a git prompt is lost. Add or change a token with `granular-passwd <profile> github.com`.
 
 - You gain: the tokens sit apart from the rest of your login keychain.
