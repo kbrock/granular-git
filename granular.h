@@ -29,6 +29,14 @@ int granular_vault_create(const char *path);
  * space. */
 const char *granular_kc_login(const char *service, const char *account);
 
+/* A listing of the vault's items whose service starts with prefix. Open returns the number of items in
+ * the vault (not all match). Get returns the service name of item i from a static buffer, or "" if i is
+ * out of range or the name does not start with the prefix. Close frees the listing. Attributes only, so
+ * no prompt. */
+int granular_kc_list_open(const char *prefix);
+const char *granular_kc_list_get(int i);
+int granular_kc_list_close(void);   /* 0 */
+
 /* Reads a line from the tty with no echo into a static buffer, or "" if there
  * is no tty or nothing was read. */
 const char *granular_read_secret(const char *prompt);
