@@ -6,7 +6,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Added
+- `granular-trust` prints your parent processes, one per line: the distance up from itself (`0`, `-1`, `-2`, ...), the name and the pid.
+- `make refresh` installs, then runs `granular-audit` and `granular-test-rw`.
+- The build prints the code hash (`CDHash`) after it signs, so a change to the binary shows.
+- `test/support/double-fork.sh` runs `granular-test-ro` in an orphaned process, and `unreadable-node.sh` runs a `claude` whose binary is gone.
+
 ### Changed
+- The daemon's profiles are one table of nodes. A request walks up from the caller, and the first process with a node that has a profile decides. Node 0 is the root and holds `ro`. An orphan from a double fork, a cron job, or a process whose path cannot be read ends at the root and gets `ro`. `login`, `sshd-session` and Sublime Merge get `rw` by path. `claude` and `Claude` get `ro` by name.
+- The daemon's request line puts the profile after the process that decided it, and leads with `root [0]` when the root decided. It drops the `granular-daemon:` prefix and the trailing `granular`.
 - `granular-git` no longer prints `store ignored` after a push. `store` and `erase` still do nothing, and INSTALL.md says so: add or change a token with `granular-passwd`.
 - `granular-git` and `granular-passwd` work with any host, not only `github.com`. A host is served when the vault holds an item for it under the caller's profile. A host with no item prints `granular: no token for <host> profile <name>`, and git prompts.
 - `granular-passwd --rekey --all` rekeys every item in the vault, whatever its host.

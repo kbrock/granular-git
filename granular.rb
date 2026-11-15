@@ -34,45 +34,48 @@ SELF_PREFIX = "granular-"
 KEYCHAIN_PREFIX = "granular:"
 
 MAX_DEPTH = 64
-APPLETS = ["git", "passwd", "daemon", "gh"]
+# Set by profile_for: the pid of the process whose node decided. 0 means the root node did.
+$decider = 0
+APPLETS = ["git", "passwd", "daemon", "trust", "gh"]
 SHELLS = ["sh", "bash", "zsh", "fish", "dash", "ksh", "tcsh"]
-# App names, matched by the executable's file name: the claude CLI and Claude.app. The nearest process
-# above the caller with a name or a profile of its own decides.
-APP_NAMES = ["claude", "Claude"]
-# The profile for claude, and for anything unknown: a chain that does not reach launchd, or a process
-# whose executable path cannot be read (for example after its binary was upgraded away).
-LOW_PROFILE = "ro"
-APP_PROFILES = [LOW_PROFILE, LOW_PROFILE]
-DEFAULT_PROFILE = "rw"
-# The table of nodes. Node 0 is pid 0, which no caller can have: it stands for every process that is not a
-# child of pid 1. Node 1 is pid 1: it stands for every other process. The rest are slots for processes.
-UNKNOWN_NODE = 0
-DEFAULT_NODE = 1
-FIRST_SLOT = 2
-SLOTS = 9
+# The table of nodes. A node matches a process by its pid, if it has one, and by its name, if it has one. A
+# name starting with "/" is an executable path; any other name is a file name. The walk takes the caller,
+# then its parents. For each process the first matching node with a profile, from the bottom of the table
+# up, decides. Node 0 has pid 0, the parent of launchd, so the walk reaches it last. The nodes after the
+# rules are slots, added as processes are claimed.
+MAX_NODES = 32
 
-# A node: pid is 0 for a free slot, start is the start time that tells a reused pid apart, and profile
-# is "" (not set) or a profile name.
+# A node: pid is -1 for none, start is the start time that tells a reused pid apart, profile is "" (not
+# set) or a profile name, and name is "" for none.
 class Node
-  attr_accessor :pid, :start, :profile
+  attr_accessor :pid, :start, :profile, :name
 
-  def initialize(pid, start, profile)
+  def initialize(pid, start, profile, name)
     @pid = pid
     @start = start
     @profile = profile
+    @name = name
   end
 
   def free?
-    @pid == 0
+    @pid == -1 && @name == "" && @profile == ""
+  end
+
+  # True if this node is for the process pid, whose executable is at path.
+  def match?(pid, path)
+    return false if @pid == -1 && @name == ""
+    return false if @pid != -1 && @pid != pid
+    return false if @name != "" && @name != path && @name != File.basename(path)
+    true
   end
 
   # The process has exited, or its pid was reused.
   def gone?
-    @pid != 0 && G.granular_pid_start(@pid) != @start
+    @pid > 0 && G.granular_pid_start(@pid) != @start
   end
 
   def clear
-    @pid = 0
+    @pid = -1
     @start = ""
     @profile = ""
   end
@@ -85,8 +88,12 @@ class Node
 end
 
 def new_table
-  nodes = [Node.new(0, "", LOW_PROFILE), Node.new(1, "", DEFAULT_PROFILE)]
-  SLOTS.times { nodes << Node.new(0, "", "") }
+  nodes = [Node.new(0, "", "ro", "")]
+  nodes << Node.new(-1, "", "ro", "claude")
+  nodes << Node.new(-1, "", "ro", "Claude")
+  nodes << Node.new(-1, "", "rw", "/Applications/Sublime Merge.app/Contents/MacOS/sublime_merge")
+  nodes << Node.new(-1, "", "rw", "/usr/bin/login")
+  nodes << Node.new(-1, "", "rw", "/usr/libexec/sshd-session")
   nodes
 end
 
@@ -99,40 +106,15 @@ VAULT = "granular.keychain-db"
 # The gh that the wrapper runs. `brew unlink gh` leaves it here and takes it off PATH.
 REAL_GH = "/opt/homebrew/opt/gh/bin/gh"
 
-# Pids from pid up to launchd. The chain is complete only if it ends at 1.
+# Pids from pid up to pid 0, the parent of launchd. A chain that does not end at 0 is broken.
 def ancestors(pid)
   chain = []
-  while pid > 0 && chain.length < MAX_DEPTH
+  while pid >= 0 && chain.length < MAX_DEPTH
     chain << pid
-    break if pid == 1
+    break if pid == 0
     pid = G.granular_parent_pid(pid)
   end
   chain
-end
-
-# The position of pid's executable file name in APP_NAMES, or -1 if it is not there.
-def app_index(pid)
-  name = File.basename(G.granular_pid_path(pid))
-  i = 0
-  while i < APP_NAMES.length
-    return i if APP_NAMES[i] == name
-    i += 1
-  end
-  -1
-end
-
-# 1 if an app name is in pid's ancestry, 0 if not, -1 if the walk fails.
-def locked_above(pid, verbose)
-  chain = ancestors(pid)
-  i = 0
-  while i < chain.length
-    app = app_index(chain[i])
-    path = G.granular_pid_path(chain[i])
-    $stderr.puts "walk pid=#{chain[i]} path=#{path == "" ? "(none)" : path}" if verbose
-    return 1 if app >= 0
-    i += 1
-  end
-  chain.last == 1 ? 0 : -1
 end
 
 # Points the Keychain calls at the vault. 0 if it is open, -1 if the file is missing.
@@ -219,7 +201,7 @@ end
 # Pids in chain (caller first) whose executable is claude.
 # Position of pid among the slots, or -1.
 def node_index(nodes, pid)
-  i = FIRST_SLOT
+  i = 0
   while i < nodes.length
     return i if nodes[i].pid == pid
     i += 1
@@ -229,16 +211,16 @@ end
 
 # Frees the slots whose process has gone.
 def forget_gone(nodes)
-  i = FIRST_SLOT
+  i = 1
   while i < nodes.length
     nodes[i].clear if nodes[i].gone?
     i += 1
   end
 end
 
-# The lowest free slot now holding pid, or -1 if all are taken.
+# The lowest free slot now holding pid, a new node if none is free, or -1 if the table is full.
 def claim_slot(nodes, pid)
-  i = FIRST_SLOT
+  i = 1
   while i < nodes.length
     if nodes[i].free?
       nodes[i].claim(pid)
@@ -246,39 +228,46 @@ def claim_slot(nodes, pid)
     end
     i += 1
   end
-  -1
+  return -1 if nodes.length >= MAX_NODES
+  nodes << Node.new(pid, G.granular_pid_start(pid), "", "")
+  nodes.length - 1
 end
 
-# The daemon's profile for pid. Walking up from the caller, the first process with a profile of its own
-# decides: its slot if one is set, else its app name. With none the default applies. The outermost shell
-# takes a slot when nothing matched, so a person's terminal can be flipped too. A chain that does not
-# reach launchd, or holds a process whose path cannot be read, gets the unknown profile. A process whose
-# path cannot be read takes a slot too, so it can be moved.
+# The daemon's profile for pid. The caller is matched against the table, then its parent, up to pid 0.
+# A matching process takes a slot if it has none, so it can be flipped. A process whose path cannot be
+# read and has no node of its own stops the walk with the root profile: it could be a claude whose
+# binary was replaced. When the root decides, the outermost shell takes a slot so it can be flipped. A
+# chain that never reached pid 0 gets the root profile.
 def profile_for(pid, nodes)
   chain = ancestors(pid)
-  return nodes[UNKNOWN_NODE].profile unless chain.last == 1
+  $decider = 0
   forget_gone(nodes)
   shell = -1
   j = 0
-  while j < chain.length - 1
-    i = node_index(nodes, chain[j])
-    return nodes[i].profile if i >= 0 && nodes[i].profile != ""
-    if G.granular_pid_path(chain[j]) == ""
-      claim_slot(nodes, chain[j]) if i < 0
-      return nodes[UNKNOWN_NODE].profile
+  while j < chain.length
+    path = G.granular_pid_path(chain[j])
+    i = nodes.length - 1
+    while i >= 0
+      if nodes[i].profile != "" && nodes[i].match?(chain[j], path)
+        $decider = chain[j]
+        if chain[j] == 0
+          claim_slot(nodes, shell) if shell != -1 && node_index(nodes, shell) < 0
+        elsif node_index(nodes, chain[j]) < 0
+          claim_slot(nodes, chain[j])
+        end
+        return nodes[i].profile
+      end
+      i -= 1
     end
-    app = app_index(chain[j])
-    if app >= 0
-      claim_slot(nodes, chain[j]) if i < 0
-      return APP_PROFILES[app]
+    if path == "" && chain[j] > 0
+      claim_slot(nodes, chain[j]) if node_index(nodes, chain[j]) < 0
+      return nodes[0].profile
     end
-    shell = chain[j] if SHELLS.include?(File.basename(G.granular_pid_path(chain[j])))
+    shell = chain[j] if SHELLS.include?(File.basename(path))
     j += 1
   end
-  if shell != -1 && node_index(nodes, shell) < 0
-    claim_slot(nodes, shell)
-  end
-  nodes[DEFAULT_NODE].profile
+  claim_slot(nodes, shell) if shell != -1 && node_index(nodes, shell) < 0
+  nodes[0].profile
 end
 
 # The executable's file name, for display. When the file can no longer be read, the name from the path
@@ -290,23 +279,42 @@ def process_name(pid)
   started == "" ? "?" : "?" + started
 end
 
-# The whole chain on one line, outermost first and without launchd: "login > zsh [2] > claude [1] > git".
-# A process that can carry a profile shows its slot number.
-def chain_label(pid, nodes)
+# The whole chain on one line, outermost first: "login > zsh [2] > claude [1] ro > git". A process that
+# can carry a profile shows its slot number. The process that decided shows the profile after its name.
+# When the root decided, it leads the line: "root [0] ro > zsh > git".
+def chain_label(pid, nodes, profile)
   chain = ancestors(pid)
   return "(unknown caller)" if chain.length == 0
   label = ""
+  label = "root [0] #{profile}" if $decider == 0
   j = chain.length - 1
   while j >= 0
-    if chain[j] != 1
+    if chain[j] > 1
       name = process_name(chain[j])
-      n = node_index(nodes, chain[j])
-      name = "#{name} [#{n}]" if n >= 0
-      label = label == "" ? name : label + " > " + name
+      if !(j == 0 && name == "granular")
+        n = node_index(nodes, chain[j])
+        name = "#{name} [#{n}]" if n >= 0
+        name = "#{name} #{profile}" if chain[j] == $decider
+        label = label == "" ? name : label + " > " + name
+      end
     end
     j -= 1
   end
   label
+end
+
+# granular-trust: this process and its parents, one per line, outermost first and without launchd. The
+# number is the distance up from this process: 0 is this process, -1 its parent.
+def trust_chain
+  chain = ancestors(G.getpid)
+  j = chain.length - 1
+  while j >= 0
+    if chain[j] > 1
+      puts "#{j == 0 ? "0" : "-" + j.to_s}  #{process_name(chain[j])}  #{chain[j]}"
+    end
+    j -= 1
+  end
+  0
 end
 
 # Frees slots of claudes that exited and gives a slot to every running claude that has none.
@@ -324,21 +332,20 @@ end
 def show_nodes(nodes)
   scan_claudes(nodes)
   home = ENV["HOME"]
-  $stderr.puts "  #{UNKNOWN_NODE}: not under pid 1  #{nodes[UNKNOWN_NODE].profile}"
-  $stderr.puts "  #{DEFAULT_NODE}: under pid 1      #{nodes[DEFAULT_NODE].profile}"
-  shown = 0
-  i = FIRST_SLOT
+  i = 0
   while i < nodes.length
-    if !nodes[i].free?
+    if i == 0
+      $stderr.puts "  0: root  #{nodes[0].profile}"
+    elsif nodes[i].pid == -1 && nodes[i].name != ""
+      $stderr.puts "  #{i}: #{nodes[i].name}  #{nodes[i].profile}"
+    elsif !nodes[i].free?
       now = profile_for(nodes[i].pid, nodes)
       cwd = G.granular_pid_cwd(nodes[i].pid)
       cwd = "~" + cwd[home.length..-1] if cwd.start_with?(home)
       $stderr.puts "  #{i}: #{process_name(nodes[i].pid)} pid=#{nodes[i].pid} #{now}  #{cwd}"
-      shown += 1
     end
     i += 1
   end
-  $stderr.puts "granular-daemon: nothing to flip yet" if shown == 0
 end
 
 # The profile after name in $profiles, wrapping around. The first if name is not in the list.
@@ -380,8 +387,8 @@ def node_command(line, nodes)
   word = line.strip
   n = word.to_i
   n = -1 if n == 0 && word != "0"
-  if n >= 0 && n < nodes.length && (n < FIRST_SLOT || !nodes[n].free?)
-    nodes[n].profile = next_profile(n < FIRST_SLOT ? nodes[n].profile : profile_for(nodes[n].pid, nodes))
+  if n >= 0 && n < nodes.length && !nodes[n].free?
+    nodes[n].profile = next_profile(nodes[n].pid > 0 ? profile_for(nodes[n].pid, nodes) : nodes[n].profile)
   elsif profile_name?(word) && !known_profile?(word)
     $profiles << word
   end
@@ -412,7 +419,7 @@ def daemon(verbose)
       pid = G.granular_peer_pid(fd)
       request = G.granular_read_line(fd)
       profile = profile_for(pid, nodes)
-      $stderr.puts "granular-daemon: #{chain_label(pid, nodes)}: #{profile}"
+      $stderr.puts chain_label(pid, nodes, profile)
       G.granular_write_line(fd, reply_for(request, profile))
       G.granular_close(fd)
     end
@@ -465,7 +472,7 @@ end
 
 # Checks shared by every granular-passwd form: not under Claude, the vault is there.
 def passwd_ready(verbose)
-  if locked_above(G.getpid, verbose) != 0
+  if profile_for(G.getpid, new_table) != "rw"
     $stderr.puts "granular-passwd: refusing to run under Claude or an unknown caller"
     return false
   end
@@ -592,7 +599,8 @@ USAGE = [
   "       granular-passwd [-v] --rekey <profile> <host> [description]",
   "       granular-passwd [-v] --rekey --all",
   "       granular-passwd [-v] --export <profile> <host>   (username and token as two lines, to a pipe)",
-  "       granular <git|passwd|daemon|gh> ...   (the same, without the link)",
+  "       granular-trust   (your parents, one per line: distance up, name, pid)",
+  "       granular <git|passwd|daemon|trust|gh> ...   (the same, without the link)",
   "       granular --version"
 ]
 if args.length == 1 && args[0] == "--version"
@@ -617,6 +625,8 @@ elsif program == "passwd" && (args.length == 2 || args.length == 3)
   exit passwd_store(args, verbose, false)
 elsif program == "daemon" && args.length == 0
   exit daemon(verbose)
+elsif program == "trust" && args.length == 0
+  exit trust_chain
 end
 USAGE.each { |l| $stderr.puts l }
 exit 2
