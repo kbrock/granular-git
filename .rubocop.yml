@@ -1,0 +1,14 @@
+inherit_gem:
+  standard: config/base.yml
+
+plugins:
+  - rubocop_spinel
+
+AllCops:
+  SuggestExtensions: false
+
+# Allow column alignment in the ffi_func table.
+Layout/ExtraSpacing:
+  AllowForAlignment: true
+Layout/HashAlignment:
+  Enabled: false
