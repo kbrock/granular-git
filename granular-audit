@@ -89,7 +89,7 @@ echo "## granular-daemon"
 if daemon_answers >/dev/null 2>&1; then
   echo "PASS  answers"
 else
-  echo "NOTE  no daemon running: blacklist=[claude, claude code]"
+  echo "NOTE  daemon not running. blacklist: claude"
 fi
 
 rw_in_vault=0
