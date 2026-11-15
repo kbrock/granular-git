@@ -3,7 +3,7 @@ BUILD  = build
 
 all: link
 
-LINKS = granular-git granular-passwd granular-daemon
+LINKS = granular-git granular-passwd granular-daemon granular-trust
 
 # link(target, source): the target is a symlink to the source's file name. It is made once, when the
 # target is missing, and after the source exists.
@@ -26,6 +26,7 @@ $(BUILD)/granular: granular.rb $(BUILD)/granular.o
 	./sign-identity.sh $(SIGN_ID)
 	spinel granular.rb -o $@ --link $(BUILD)/granular.o --link -Wl,-framework,Security --link -Wl,-framework,CoreFoundation
 	codesign --force -s $(SIGN_ID) $@
+	@codesign -d -vvv $@ 2>&1 | grep CDHash
 
 PREFIX = /usr/local/bin
 
@@ -41,8 +42,14 @@ $(addprefix $(PREFIX)/,$(SCRIPTS)): $(PREFIX)/%: %
 
 install: $(PREFIX)/granular $(addprefix $(PREFIX)/,$(LINKS) gh $(SCRIPTS))
 
+# After a rebuild: install, then audit and test. Run it in your
+# own terminal. Restart granular-daemon in its tab first.
+refresh: install
+	$(PREFIX)/granular-audit
+	$(PREFIX)/granular-test-rw
+
 uninstall:
-	for n in granular-git granular-passwd granular-daemon gh; do \
+	for n in granular-git granular-passwd granular-daemon granular-trust gh; do \
 		[ "$$(readlink $(PREFIX)/$$n)" = granular ] && rm $(PREFIX)/$$n; done; \
 		rm -f $(PREFIX)/granular
 	rm -f $(addprefix $(PREFIX)/,$(SCRIPTS))
@@ -74,4 +81,4 @@ release: dist
 clean:
 	rm -rf $(BUILD)
 
-.PHONY: all link install uninstall dist release clean
+.PHONY: all link install refresh uninstall dist release clean
