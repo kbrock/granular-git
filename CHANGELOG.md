@@ -18,6 +18,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - `granular-git` no longer prints `store ignored` after a push. `store` and `erase` still do nothing, and INSTALL.md says so: add or change a token with `granular-passwd`.
 - `granular-git` and `granular-passwd` work with any host, not only `github.com`. A host is served when the vault holds an item for it under the caller's profile. A host with no item prints `granular: no token for <host> profile <name>`, and git prompts.
 - `granular-passwd --rekey --all` rekeys every item in the vault, whatever its host.
+- `granular-audit` groups its checks under headings (`granular-git`, `credential.helper`, `granular-daemon`, `vault`, `stored credentials`, `gh`). A FAIL line says what is wrong, and the vault's items are listed under the vault.
 
 ## [0.2.0] - 2026-11-10
 
