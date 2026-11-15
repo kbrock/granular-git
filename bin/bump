@@ -1,6 +1,6 @@
 #!/usr/bin/env ruby
 # bin/bump [-y] [major|minor|patch|X.Y.Z]: turns [Unreleased] in CHANGELOG.md into the next version and sets
-# VERSION in granular.rb. With no argument it suggests the level from the headings under [Unreleased].
+# VERSION in lib/granular/config.rb. With no argument it suggests the level from the headings under [Unreleased].
 # It prints what the release contains and asks to confirm; -y skips the question.
 # It edits two files and commits them as "Release X" with the changelog entries in the message.
 # It does not tag or push.
@@ -8,17 +8,17 @@ require "date"
 
 ROOT = File.expand_path("..", __dir__)
 LOG = File.join(ROOT, "CHANGELOG.md")
-RB = File.join(ROOT, "granular.rb")
-LEVEL = { "Breaking" => :major, "Removed" => :major, "Added" => :minor }
-WHAT = { "Breaking" => "a breaking change", "Removed" => "a removal", "Added" => "new features", "Changed" => "changes",
-         "Fixed" => "bug fixes", "Security" => "security fixes", "Deprecated" => "deprecations" }
+RB = File.join(ROOT, "lib/granular/config.rb")
+LEVEL = {"Breaking" => :major, "Removed" => :major, "Added" => :minor}
+WHAT = {"Breaking" => "a breaking change", "Removed" => "a removal", "Added" => "new features", "Changed" => "changes",
+         "Fixed" => "bug fixes", "Security" => "security fixes", "Deprecated" => "deprecations"}
 RANK = %i[patch minor major]
 
 other = `git -C #{ROOT} status --porcelain --untracked-files=no 2>/dev/null`.lines.reject { |l| l =~ /CHANGELOG\.md|granular\.rb/ }
 abort "bump: commit or stash these first:\n#{other.join}" unless other.empty?
 
 text = File.read(LOG)
-current = File.read(RB)[/^VERSION = "(.*)"/, 1] or abort "bump: no VERSION in granular.rb"
+current = File.read(RB)[/^VERSION = "(.*)"/, 1] or abort "bump: no VERSION in lib/granular/config.rb"
 body = text[/^## \[Unreleased\]\n(.*?)(?=^## \[)/m, 1].to_s
 names = body.split(/^### /).drop(1).select { |s| s.lines.drop(1).any? { |l| l.start_with?("-") } }.map { |s| s.lines.first.strip }
 abort "bump: nothing under [Unreleased]" if names.empty?
@@ -32,7 +32,7 @@ else
   level = arg ? arg.to_sym : names.map { |n| LEVEL.fetch(n, :patch) }.max_by { |l| RANK.index(l) }
   abort "usage: bin/bump [-y] [major|minor|patch|X.Y.Z]" unless RANK.include?(level)
   level = :minor if arg.nil? && level == :major && maj == 0
-  new = { major: "#{maj + 1}.0.0", minor: "#{maj}.#{min + 1}.0", patch: "#{maj}.#{min}.#{pat + 1}" }[level]
+  new = {major: "#{maj + 1}.0.0", minor: "#{maj}.#{min + 1}.0", patch: "#{maj}.#{min}.#{pat + 1}"}[level]
 end
 puts "contains #{names.map { |n| WHAT.fetch(n, n) }.join(", ")}"
 

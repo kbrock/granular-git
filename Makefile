@@ -22,7 +22,7 @@ $(BUILD)/granular.o: granular.c granular.h
 
 SIGN_ID = granular-signing
 
-$(BUILD)/granular: granular.rb $(BUILD)/granular.o
+$(BUILD)/granular: granular.rb $(wildcard lib/granular/*.rb) $(BUILD)/granular.o
 	./sign-identity.sh $(SIGN_ID)
 	spinel granular.rb -o $@ --link $(BUILD)/granular.o --link -Wl,-framework,Security --link -Wl,-framework,CoreFoundation
 	codesign --force -s $(SIGN_ID) $@
@@ -54,7 +54,7 @@ uninstall:
 		rm -f $(PREFIX)/granular
 	rm -f $(addprefix $(PREFIX)/,$(SCRIPTS))
 
-VERSION := $(shell sed -n 's/^VERSION = "\(.*\)"/\1/p' granular.rb)
+VERSION := $(shell sed -n 's/^VERSION = "\(.*\)"/\1/p' lib/granular/config.rb)
 
 # A tarball of what install puts in PREFIX, links included: sudo tar xzf granular-<version>.tgz -C /usr/local/bin
 dist: $(BUILD)/granular
