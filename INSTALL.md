@@ -2,7 +2,7 @@
 
 ## What a prompt is
 
-A prompt is the macOS dialog that appears when a program asks to read a Keychain item. A new build of granular triggers one the first time it reads each token.
+A prompt is the macOS dialog that appears when a program asks to read a Keychain item. granular triggers one the first time it reads each token, and again when the signing identity changes.
 
 It reads: "granular wants to use your confidential information stored in 'granular:ro:github.com' in your keychain", and asks for a keychain password.
 - Allow: this read only. It asks again next time.
@@ -13,7 +13,7 @@ What to press:
 - Allow or Always Allow a prompt that names `granular` and `granular:ro:github.com` or `granular:rw:github.com`.
 - Deny a prompt that names anything else, such as `security` or `nc`. Something else is asking for a token.
 
-A prompt appears once per binary per item (`ro` and `rw` are two items). A signed rebuild keeps the approval. A new signing identity brings the prompts back until you rekey.
+A prompt appears once per signing identity per item (`ro` and `rw` are two items). A signed rebuild keeps the approval. A new signing identity brings the prompts back until you rekey.
 
 ## Basic mode, no daemon
 
@@ -76,7 +76,7 @@ security find-generic-password -s granular:rw:github.com ~/Library/Keychains/gra
 
 ### Upgrade
 
-Install the new tarball as above, restart the daemon, then rekey so the items name the new build:
+Install the new tarball as above and restart the daemon. A build signed with the same identity keeps its approvals. If the vault prompts again (a build signed with a different identity), rekey the items:
 ```sh
 granular-passwd --rekey --all
 ```
@@ -93,7 +93,7 @@ granular-test-rw    # in your terminal
 granular-test-ro    # in a Claude session
 ```
 
-Git and `gh` now decide in their own process: a `claude` above them gets `ro`, anyone else gets `rw`.
+Git and `gh` now decide in their own process by the starting rules: `claude` gets the read-only token, and your terminal and ssh sessions get the read-write token.
 - You gain: Claude's pushes fail and yours work, with nothing else running.
 - You lose: no per-process flipping, and no record of who asked.
 
@@ -101,15 +101,10 @@ Git and `gh` now decide in their own process: a `claude` above them gets `ro`, a
 
 Type `granular-daemon` in a spare terminal tab and leave it running.
 
-Git and `gh` now ask the daemon over `~/.granular/sock`, and only the daemon reads the Keychain for them. Every request prints the caller's chain on one line, outermost first, with a node number on each process that can carry a profile:
-`login > zsh [3] > claude [2] > node > git > git-remote-https: ro`
+Git and `gh` now ask the daemon over `~/.granular/sock`, and only the daemon reads the Keychain for them. Every request prints the caller's chain on one line:
+`rex > login [8] rw > bash > claude [3] ro > node > git > git-remote-http`
 
-- The daemon decides by the profile table (see Mechanism in [README.md](README.md)). The first process with a profile decides: a node you moved, else an app name (seeded for `claude` and `Claude.app`). With none the caller gets the default node (`rw`).
-- Nodes 2 to 10 go to every matched process the daemon sees and to the outermost shell above it.
-- Type a node number and Enter in the daemon's tab to move that node to the next profile. Enter alone lists the nodes with their pid and working directory. A process shows only after it has made a request or the scan has found a `claude` by name.
-- Node 0 is `not under pid 1` and node 1 is `under pid 1`. Moving node 1 changes what a process with no node of its own gets.
-- Type a new profile name (a letter, then letters, digits, `-` or `_`) and Enter to add it to the end of the cycle. Store its token with `granular-passwd <name> github.com`. A profile with no token for a host prints `granular: no token for <host> profile <name>`, and git falls through to its own prompt.
-- A node is freed when its process exits, and its number is reused.
+The deciding process shows its profile. Type a slot number and Enter in the daemon's tab to move it to the next profile, and Enter alone to list the table. [USAGE.md](USAGE.md) covers the tab, the slots and how to give read-write to named shells only.
 
 - You gain: flip one Claude session to `rw` for a task and flip it back, and a line for every request.
 - You lose: one more process to keep running. A Keychain dialog blocks the daemon until it is answered.
@@ -123,7 +118,7 @@ The first `granular-passwd` run creates it, through a system dialog that asks fo
 - It relocks after a day and stays unlocked through sleep. Unlock it from any terminal: `security unlock-keychain ~/Library/Keychains/granular.keychain-db`
 - Each login is an item: service `granular:<profile>:<host>`, account the username, secret the token. Git and `gh` share them.
 - Any host works: `granular-git` serves a host when the vault holds an item for it under the caller's profile, such as `granular-passwd rw gitlab.com`. A host with no item gets no token. The `gh` wrapper covers github.com only.
-- Rekey every item: `granular-passwd --rekey --all` rekeys each `granular:*` item in the vault. Rekey one item: `granular-passwd --rekey <profile> <host> [description]` reads the stored login, deletes the item and adds it again from the current build. Run it when a vault item prompts after a rebuild or a change of signing identity, because an item's access list names the build that stored it. It also changes the message with no token to paste: a given description replaces the old one, `""` clears it, and none keeps it.
+- Rekey every item: `granular-passwd --rekey --all` rekeys each `granular:*` item in the vault. Rekey one item: `granular-passwd --rekey <profile> <host> [description]` reads the stored login, deletes the item and adds it again from the current build. Run it when a vault item prompts after a change of signing identity, because an item's access list names the identity that stored it. It also changes the message with no token to paste: a given description replaces the old one, `""` clears it, and none keeps it.
 - `granular-git` never saves. Git's `store` and `erase` calls do nothing, so a token typed at a git prompt is lost. Add or change a token with `granular-passwd <profile> github.com`.
 
 - You gain: the tokens sit apart from the rest of your login keychain.
@@ -150,7 +145,7 @@ granular-passwd --export rw github.com | { read -r user && read -r pw && [ -n "$
 
 # stop the daemon (Ctrl-C in its tab), then remove everything
 rm -rf ~/.granular
-sudo rm /usr/local/bin/{granular,granular-git,granular-passwd,granular-daemon,gh,granular-audit,granular-test-ro,granular-test-rw}
+sudo rm /usr/local/bin/{granular,granular-git,granular-passwd,granular-daemon,granular-trust,gh,granular-audit,granular-test-ro,granular-test-rw}
 git config --global --unset-all credential.helper
 # git config --global --add credential.helper osxkeychain    # only if your Xcode git does not already have it
 brew link gh    # then: gh auth login

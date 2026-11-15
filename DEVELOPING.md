@@ -71,15 +71,22 @@ Steps:
 3. In the session, run `granular-test-rw`. It passes.
 4. Type the node number again. The session is `ro`. Run `granular-test-ro`. It passes.
 
+## Attack scripts
+
+`test/support/` holds scripts that try to get around the rules. Run them from a Claude session on the test branch.
+- `double-fork.sh` runs `granular-test-ro` in an orphaned process and prints `BLOCKED` or `ATTACK WORKS`.
+- `unreadable-node.sh` runs a `claude` whose program file is deleted, and shows the process in the daemon's tab.
+
 ## Build and release
 
 - Compile: `make link`. Install: `make install`. Remove: `make uninstall`. Clean: `make clean`.
+- After a rebuild, run `make refresh` in your own terminal: it installs, then runs `granular-audit` and `granular-test-rw`. Restart `granular-daemon` first. The build prints the binary's `CDHash`, which changes with the code while the signing identity stays the same.
 - Run all three tests after every build. A rebuild signed with the same identity does not prompt again.
 - Switches at the top of `granular.rb`. Rebuild after changing one.
   - `VAULT`: the keychain file in `~/Library/Keychains`.
   - `REQUIRE_DAEMON`: default `false`. `true` makes Git and `gh` give no token when the daemon is not running.
   - `REAL_GH`: the real `gh`, default `/opt/homebrew/opt/gh/bin/gh`. On an Intel Mac use `/usr/local/opt/gh/bin/gh`.
-  - `APP_PROFILES`, `DEFAULT_PROFILE`: the table entries.
+  - `new_table`: the starting rules of the table (the root, and the rules by program name or path).
 - Release. Put the changes under `[Unreleased]` in `CHANGELOG.md`, then:
   ```sh
   bin/bump                         # on the feature branch: suggests the version, commits "Release X"
