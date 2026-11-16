@@ -1,13 +1,15 @@
 CFLAGS = -Wall -Wextra -Wno-deprecated-declarations
 BUILD  = build
+DIST   = dist
 PREFIX = /usr/local/bin
 
 LINKS   = granular-git granular-passwd granular-daemon granular-trust gh
 SCRIPTS = granular-audit granular-test
 NAMES   = granular $(LINKS) $(SCRIPTS)
 SOURCES = granular.rb $(wildcard lib/granular/*.rb)
-VERSION := $(shell sed -n 's/^VERSION = "\(.*\)"/\1/p' lib/granular/config.rb)
-TARBALL = $(BUILD)/granular-$(VERSION).tgz
+# v0.2.0 at that tag, v0.2.0+29 when 29 commits past it.
+NAME := $(shell git describe --tags --always | sed 's/-\([0-9]*\)-g.*/+\1/')
+TARBALL = $(DIST)/granular-$(NAME).tgz
 
 all: $(BUILD)/granular
 
@@ -37,14 +39,16 @@ uninstall:
 dist: $(TARBALL)
 
 $(TARBALL): $(BUILD)/granular $(LINKS:%=$(BUILD)/%) $(SCRIPTS)
+	@git diff --quiet HEAD || echo "warning: uncommitted changes are in this tarball" >&2
+	mkdir -p $(DIST)
 	tar czf $@ -C $(BUILD) granular $(LINKS) -C .. $(SCRIPTS)
-	cd $(BUILD) && shasum -a 256 $(notdir $@) | tee $(notdir $@).sha256
+	cd $(DIST) && shasum -a 256 $(notdir $@) | tee $(notdir $@).sha256
 
 release: dist
 	bin/release
 
 clean:
-	rm -rf $(BUILD)
+	rm -rf $(BUILD) $(DIST)
 
 .PHONY: all install uninstall dist release clean
 .DELETE_ON_ERROR:
