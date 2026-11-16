@@ -41,14 +41,14 @@ The certificate expires one year after you create it. When it does, `make` stops
 
 In your own terminal. On the computer with Spinel:
 ```sh
-make dist    # builds build/granular-<version>.tgz and its .sha256
+make dist    # builds dist/granular-<tag>[+commits].tgz and its .sha256
 ```
 `make` signs with the certificate from [Signing certificate](#signing-certificate).
 
 On the computer you are setting up:
 ```sh
 cd ~/Downloads
-scp 'host:src/granular-git/build/granular-*' .
+scp 'host:src/granular-git/dist/granular-*' .
 # basically Spinel's make install, after the checksum matches
 shasum -a 256 -c granular-*.tgz.sha256 && sudo mkdir -p /usr/local/bin && sudo tar xzf granular-*.tgz -C /usr/local/bin
 [ -x /usr/local/bin/granular ] && echo "installed"
