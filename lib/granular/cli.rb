@@ -30,7 +30,7 @@ class Cli
   end
 
   def vault
-    @vault ||= Vault.new
+    @vault ||= Vault.new(ENV["HOME"] + "/Library/Keychains/" + VAULT)
   end
 
   def table
@@ -99,7 +99,7 @@ class Cli
     verbose = args[0] == "-v"
     args = args[1..] if verbose
     return 0 if version?(args) || help?(args, PASSWD_USAGE)
-    passwd = Passwd.new(can: Can.new, vault: vault, caller_profile: table.profile_for(G.getpid), verbose: verbose)
+    passwd = Passwd.new(can: Can.new, vault: vault, caller_profile: table.profile_for(G.getpid), stdout_tty: G.isatty(1) != 0, verbose: verbose)
     if args.length == 2 && args[0] == "--rekey" && args[1] == "--all"
       passwd.rekey_all
     elsif args.length == 3 && args[0] == "--export"
