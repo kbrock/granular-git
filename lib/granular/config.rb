@@ -17,3 +17,5 @@ REQUIRE_DAEMON = false
 VAULT = "granular.keychain-db"
 # The gh that the wrapper runs. `brew unlink gh` leaves it here and takes it off PATH.
 REAL_GH = "/opt/homebrew/opt/gh/bin/gh"
+# The daemon's socket. GRANULAR_SOCKET in the environment replaces the default, for tests.
+SOCKET = ENV["GRANULAR_SOCKET"] || ENV["HOME"] + "/.granular/sock"

@@ -8,9 +8,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Added
 - `granular-trust` prints your parent processes, one per line: the distance up from itself (`0`, `-1`, `-2`, ...), the name and the pid.
-- `make refresh` installs, then runs `granular-audit` and `granular-test-rw`.
-- The build prints the code hash (`CDHash`) after it signs, so a change to the binary shows.
-- `test/support/double-fork.sh` runs `granular-test-ro` in an orphaned process, and `unreadable-node.sh` runs a `claude` whose binary is gone.
+- `make` lints with rubocop, compiles, signs, and runs `bin/ci`. A failed step deletes the binary, so the next `make` starts over. `make install` copies the binary, its links and the scripts, then runs `granular-audit`; `make dist` tars the same files; `make release` runs `bin/release`.
+- `bin/ci` checks a build, one line per step. Under Claude it checks `ro`; in your own terminal it also checks `rw`, with no daemon and through a test daemon.
+- `bin/sign` signs with an Apple Development certificate and fails the build unless the requirement pins your Team ID. A rebuild no longer brings back the Keychain prompt. INSTALL.md says how to create the certificate.
+- `granular-test` replaces `granular-test-ro` and `granular-test-rw`: `granular-test`, `--ro` or `--rw`.
+- `GRANULAR_SOCKET` in the environment replaces the daemon's socket path.
+- `bin/release` checks the tree, the changelog and `bin/ci`, then publishes the tarball.
+- The source is `lib/granular/*.rb`, one class per file, checked by rubocop with `rubocop_spinel`.
+- `test/support/double-fork.sh` runs `granular-test --ro` in an orphaned process, and `unreadable-node.sh` runs a `claude` whose binary is gone.
 
 ### Changed
 - The daemon's profiles are one table of nodes. A request walks up from the caller, and the first process with a node that has a profile decides. Node 0 is the root and holds `ro`. An orphan from a double fork, a cron job, or a process whose path cannot be read ends at the root and gets `ro`. `login`, `sshd-session` and Sublime Merge get `rw` by path. `claude` and `Claude` get `ro` by name.

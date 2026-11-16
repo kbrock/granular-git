@@ -8,7 +8,7 @@ class Responder
     words = request.split(" ")
     return "deny bad request" if (words.length != 2 && words.length != 3) || words[0] != "get"
     return "deny no vault" if @vault.open != 0
-    login = G.granular_kc_login(KEYCHAIN_PREFIX + profile + ":" + words[1], (words.length == 3) ? words[2] : "")
+    login = @vault.login(KEYCHAIN_PREFIX + profile + ":" + words[1], (words.length == 3) ? words[2] : "")
     return "deny no item " + profile if login == ""
     "ok " + login
   end
