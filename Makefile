@@ -40,9 +40,10 @@ dist: $(TARBALL)
 
 $(TARBALL): $(BUILD)/granular $(LINKS:%=$(BUILD)/%) $(SCRIPTS)
 	@git diff --quiet HEAD || echo "warning: uncommitted changes are in this tarball" >&2
-	mkdir -p $(DIST)
+	@mkdir -p $(DIST)
 	tar czf $@ -C $(BUILD) granular $(LINKS) -C .. $(SCRIPTS)
 	cd $(DIST) && shasum -a 256 $(notdir $@) | tee $(notdir $@).sha256
+	@echo
 
 release: dist
 	bin/release
