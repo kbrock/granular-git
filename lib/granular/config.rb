@@ -1,4 +1,4 @@
-VERSION = "0.2.0"
+VERSION = "0.3.0"
 SELF_PREFIX = "granular-"
 # A login is a Keychain item: service "granular:<profile>:<host>", account = username, secret = token.
 KEYCHAIN_PREFIX = "granular:"

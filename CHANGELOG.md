@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-11-16
+
 ### Added
 - `granular-trust` prints your parent processes, one per line: the distance up from itself (`0`, `-1`, `-2`, ...), the name and the pid.
 - `make` lints with rubocop, compiles, signs, and runs `bin/ci`. A failed step deletes the binary, so the next `make` starts over. `make install` copies the binary, its links and the scripts, then runs `granular-audit`; `make dist` tars the same files; `make release` runs `bin/release`.
@@ -59,6 +61,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - `make dist` builds `build/granular-<version>.tgz` with the installed files, for a computer without Spinel.
 - `granular-git --version`.
 
-[Unreleased]: https://github.com/kbrock/granular-git/compare/v0.2.0...HEAD
+[Unreleased]: https://github.com/kbrock/granular-git/compare/v0.3.0...HEAD
+[0.3.0]: https://github.com/kbrock/granular-git/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/kbrock/granular-git/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/kbrock/granular-git/releases/tag/v0.1.0
