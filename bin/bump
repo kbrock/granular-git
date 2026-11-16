@@ -1,56 +1,139 @@
 #!/usr/bin/env ruby
-# bin/bump [-y] [major|minor|patch|X.Y.Z]: turns [Unreleased] in CHANGELOG.md into the next version and sets
-# VERSION in lib/granular/config.rb. With no argument it suggests the level from the headings under [Unreleased].
-# It prints what the release contains and asks to confirm; -y skips the question.
-# It edits two files and commits them as "Release X" with the changelog entries in the message.
-# It does not tag or push.
+
+# bin/bump [-y] [major|minor|patch|X.Y.Z]:
+# Guesses next version based upon CHANGELOG entries
+#
+# requests verification, but -y skips the verification
+# Updates CHANGELOG converting Unreleased to next version and updates bottom links
+# Updates VERSION
+# commits
+# tags
+# makes tarball
+#
+# not pushed
 require "date"
 
-ROOT = File.expand_path("..", __dir__)
-LOG = File.join(ROOT, "CHANGELOG.md")
-RB = File.join(ROOT, "lib/granular/config.rb")
-LEVEL = {"Breaking" => :major, "Removed" => :major, "Added" => :minor}
-WHAT = {"Breaking" => "a breaking change", "Removed" => "a removal", "Added" => "new features", "Changed" => "changes",
-         "Fixed" => "bug fixes", "Security" => "security fixes", "Deprecated" => "deprecations"}
-RANK = %i[patch minor major]
+class Bump
+  ROOT = File.expand_path("..", __dir__)
+  LOG = File.join(ROOT, "CHANGELOG.md")
+  RB = File.join(ROOT, "lib/granular/config.rb")
+  LEVEL = {"Breaking" => :major, "Removed" => :major, "Added" => :minor}
+  WHAT = {"Breaking" => "a breaking change", "Removed" => "a removal", "Added" => "new features", "Changed" => "changes",
+          "Fixed" => "bug fixes", "Security" => "security fixes", "Deprecated" => "deprecations"}
+  RANK = %i[patch minor major]
 
-other = `git -C #{ROOT} status --porcelain --untracked-files=no 2>/dev/null`.lines.reject { |l| l =~ /CHANGELOG\.md|granular\.rb/ }
-abort "bump: commit or stash these first:\n#{other.join}" unless other.empty?
+  def run(argv)
+    @yes = argv.delete("-y")
+    @arg = argv[0]
 
-text = File.read(LOG)
-current = File.read(RB)[/^VERSION = "(.*)"/, 1] or abort "bump: no VERSION in lib/granular/config.rb"
-body = text[/^## \[Unreleased\]\n(.*?)(?=^## \[)/m, 1].to_s
-names = body.split(/^### /).drop(1).select { |s| s.lines.drop(1).any? { |l| l.start_with?("-") } }.map { |s| s.lines.first.strip }
-abort "bump: nothing under [Unreleased]" if names.empty?
+    confirm_tree_clean
+    @current_version = version_from_config
+    confirm_head_not_tagged
 
-maj, min, pat = current.split(".").map(&:to_i)
-yes = ARGV.delete("-y")
-arg = ARGV[0]
-if arg =~ /\A\d+\.\d+\.\d+\z/
-  new = arg
-else
-  level = arg ? arg.to_sym : names.map { |n| LEVEL.fetch(n, :patch) }.max_by { |l| RANK.index(l) }
-  abort "usage: bin/bump [-y] [major|minor|patch|X.Y.Z]" unless RANK.include?(level)
-  level = :minor if arg.nil? && level == :major && maj == 0
-  new = {major: "#{maj + 1}.0.0", minor: "#{maj}.#{min + 1}.0", patch: "#{maj}.#{min}.#{pat + 1}"}[level]
+    if release_commit_made?
+      @new_version = @current_version
+    else
+      @new_version = next_version
+      confirm_release
+      update_changelog
+      update_version
+      commit
+    end
+
+    build
+    tag
+    tarball
+  end
+
+  private
+
+  def confirm_tree_clean
+    other = `git -C #{ROOT} status --porcelain --untracked-files=no 2>/dev/null`.lines.reject { |l| l =~ /CHANGELOG\.md|granular\.rb/ }
+    abort "bump: commit or stash these first:\n#{other.join}" unless other.empty?
+  end
+
+  def version_from_config
+    File.read(RB)[/^VERSION = "(.*)"/, 1] or abort "bump: no VERSION in lib/granular/config.rb"
+  end
+
+  def tagged?(version)
+    system("git", "-C", ROOT, "rev-parse", "-q", "--verify", "refs/tags/v#{version}", out: File::NULL)
+  end
+
+  # A tag on HEAD means nothing is left to release. A tag that is not config.rb's version means config.rb
+  # and CHANGELOG.md do not reflect it.
+  def confirm_head_not_tagged
+    head_tag = `git -C #{ROOT} describe --exact-match --tags HEAD 2>/dev/null`.strip
+    return if head_tag.empty?
+    abort "bump: HEAD is tagged #{head_tag} but config.rb says #{@current_version}; fix CHANGELOG.md and config.rb" unless head_tag == "v#{@current_version}"
+    abort "bump: HEAD is already #{head_tag}; there is nothing new to release"
+  end
+
+  # config.rb holds a version with no tag: bump already made the Release commit, so carry on from the build.
+  def release_commit_made?
+    return false if tagged?(@current_version)
+    puts "bump: Release #{@current_version} is committed and not yet tagged; carrying on."
+    true
+  end
+
+  # The headings under [Unreleased] that have entries.
+  def changelog_names
+    body = File.read(LOG)[/^## \[Unreleased\]\n(.*?)(?=^## \[)/m, 1].to_s
+    names = body.split(/^### /).drop(1).select { |s| s.lines.drop(1).any? { |l| l.start_with?("-") } }.map { |s| s.lines.first.strip }
+    abort "bump: nothing under [Unreleased]" if names.empty?
+    names
+  end
+
+  def next_version
+    return @arg if @arg =~ /\A\d+\.\d+\.\d+\z/
+    maj, min, pat = @current_version.split(".").map(&:to_i)
+    level = @arg ? @arg.to_sym : changelog_names.map { |n| LEVEL.fetch(n, :patch) }.max_by { |l| RANK.index(l) }
+    abort "usage: bin/bump [-y] [major|minor|patch|X.Y.Z]" unless RANK.include?(level)
+    level = :minor if @arg.nil? && level == :major && maj == 0
+    {major: "#{maj + 1}.0.0", minor: "#{maj}.#{min + 1}.0", patch: "#{maj}.#{min}.#{pat + 1}"}[level]
+  end
+
+  def confirm_release
+    puts "contains #{changelog_names.map { |n| WHAT.fetch(n, n) }.join(", ")}"
+    return if @yes
+    print "#{@current_version} -> #{@new_version}? [y/N] "
+    abort "bump: stopped" unless $stdin.gets.to_s.strip.downcase == "y"
+  end
+
+  # Unreleased becomes the new version, and the links at the bottom follow.
+  def update_changelog
+    text = File.read(LOG)
+    text.sub!(/^## \[Unreleased\]\n/) { "## [Unreleased]\n\n## [#{@new_version}] - #{Date.today}\n" }
+    text.sub!(/^\[Unreleased\]: (\S+)\/compare\/v\S+\.\.\.HEAD$/) do
+      "[Unreleased]: #{$1}/compare/v#{@new_version}...HEAD\n[#{@new_version}]: #{$1}/compare/v#{@current_version}...v#{@new_version}"
+    end or abort "bump: no [Unreleased] compare link in CHANGELOG.md"
+    File.write(LOG, text)
+  end
+
+  def update_version
+    File.write(RB, File.read(RB).sub(/^VERSION = ".*"/, %(VERSION = "#{@new_version}")))
+  end
+
+  # The commit message lists what the release contains, so git log shows it. Git drops lines that start
+  # with #, so the headings are underlined instead.
+  def commit
+    entries = File.read(LOG)[/^## \[#{Regexp.escape(@new_version)}\][^\n]*\n(.*?)(?=^## \[|^\[)/m, 1].to_s.strip.gsub(/^### (.*)$/) { "#{$1}\n---" }
+    IO.popen(["git", "-C", ROOT, "commit", "-q", "-a", "-F", "-"], "w") { |io| io.write("Release #{@new_version}\n\n#{entries}\n") }
+    abort "bump: git commit failed" unless $?.success?
+  end
+
+  def build
+    system("make", "-C", ROOT) || abort("bump: build failed, not tagged. Fix it and run bin/bump again")
+  end
+
+  def tag
+    system("git", "-C", ROOT, "tag", "-m", "Release #{@new_version}", "v#{@new_version}") unless tagged?(@new_version)
+  end
+
+  def tarball
+    system("make", "-C", ROOT, "dist") || abort("bump: make dist failed. Fix it and run bin/bump again")
+    puts "bump: Release #{@new_version} is committed, built, tagged and in dist/. Undo with: git tag -d v#{@new_version} && git reset --hard HEAD~1"
+  end
 end
-puts "contains #{names.map { |n| WHAT.fetch(n, n) }.join(", ")}"
 
-unless yes
-  print "#{current} -> #{new}? [y/N] "
-  abort "bump: stopped" unless $stdin.gets.to_s.strip.downcase == "y"
-end
-
-text.sub!(/^## \[Unreleased\]\n/) { "## [Unreleased]\n\n## [#{new}] - #{Date.today}\n" }
-text.sub!(/^\[Unreleased\]: (\S+)\/compare\/v\S+\.\.\.HEAD$/) do
-  "[Unreleased]: #{$1}/compare/v#{new}...HEAD\n[#{new}]: #{$1}/compare/v#{current}...v#{new}"
-end or abort "bump: no [Unreleased] compare link in CHANGELOG.md"
-File.write(LOG, text)
-File.write(RB, File.read(RB).sub(/^VERSION = ".*"/, %(VERSION = "#{new}")))
-
-# The commit message lists what the release contains, so git log shows it. Git drops lines that start
-# with #, so the headings are underlined instead.
-entries = text[/^## \[#{Regexp.escape(new)}\][^\n]*\n(.*?)(?=^## \[|^\[)/m, 1].to_s.strip.gsub(/^### (.*)$/) { "#{$1}\n---" }
-IO.popen(["git", "-C", ROOT, "commit", "-q", "-a", "-F", "-"], "w") { |io| io.write("Release #{new}\n\n#{entries}\n") }
-abort "bump: git commit failed" unless $?.success?
-puts "bump: committed Release #{new}. Merge it, then make release. Undo with: git reset HEAD~1"
+Bump.new.run(ARGV)

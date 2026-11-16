@@ -1,6 +1,7 @@
 #!/usr/bin/env ruby
-# Publishes the GitHub release for VERSION.
-# Run it from your own terminal, on main, after the bump is merged and pulled.
+# Publishes what bin/bump built: pushes main and the tag, then creates the GitHub release for VERSION.
+# Run it from your own terminal, on main, after bin/bump. Run it again after a failure; each step is skipped
+# when it is already done.
 Dir.chdir(File.expand_path("..", __dir__))
 
 def git(command) = `git #{command}`.strip
@@ -18,13 +19,17 @@ git "fetch -q #{remote}"
 # Checks
 stop "commit or stash your changes first" unless git("status --porcelain -uno").empty?
 stop "switch to main" unless git("rev-parse --abbrev-ref HEAD") == "main"
-stop "main is not #{remote}/main (git pull)" unless git("rev-parse HEAD") == git("rev-parse #{remote}/main")
+stop "#{remote}/main has commits main lacks (git pull)" unless system("git", "merge-base", "--is-ancestor", "#{remote}/main", "HEAD")
+stop "v#{version} is not on HEAD (run bin/bump)" unless git("rev-parse v#{version}^{commit}") == git("rev-parse HEAD")
 stop "CHANGELOG.md has no [#{version}] section" unless notes
 stop "run make dist first" unless File.exist?("dist/granular-#{name}.tgz")
 
 system("bin/ci") || stop("bin/ci failed")
 
 # Publish
+system("git", "push", remote, "main") || stop("push failed") unless git("rev-parse HEAD") == git("rev-parse #{remote}/main")
+system("git", "push", remote, "v#{version}") || stop("push failed") if git("ls-remote --tags #{remote} v#{version}").empty?
+exit if system("gh", "release", "view", "v#{version}", out: File::NULL, err: File::NULL)
 tarball = "dist/granular-#{name}.tgz"
 system("gh", "release", "create", "v#{version}", tarball, "#{tarball}.sha256",
   "--title", "v#{version}", "--notes", notes) || stop("gh failed")
