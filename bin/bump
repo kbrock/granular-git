@@ -132,7 +132,8 @@ class Bump
 
   def tarball
     system("make", "-C", ROOT, "dist") || abort("bump: make dist failed. Fix it and run bin/bump again")
-    puts "bump: Release #{@new_version} is committed, built, tagged and in dist/. Undo with: git tag -d v#{@new_version} && git reset --hard HEAD~1"
+    puts "bump: Release #{@new_version} is committed, built, tagged and in dist/."
+    puts "Undo with: git tag -d v#{@new_version} && git reset --hard HEAD~1"
   end
 end
 
