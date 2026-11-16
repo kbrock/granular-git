@@ -1,0 +1,9 @@
+#!/bin/bash
+# Makes a temp directory holding the names granular runs under, each a link to the binary in $1.
+# Prints the directory. Put it first on PATH to run a build the way an install would.
+binary=$(cd "$(dirname "$1")" && pwd)/$(basename "$1")
+dir=$(mktemp -d) || exit 1
+for name in granular granular-git granular-passwd granular-daemon granular-trust gh; do
+  ln -s "$binary" "$dir/$name"
+done
+echo "$dir"

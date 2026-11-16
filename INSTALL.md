@@ -6,14 +6,36 @@ A prompt is the macOS dialog that appears when a program asks to read a Keychain
 
 It reads: "granular wants to use your confidential information stored in 'granular:ro:github.com' in your keychain", and asks for a keychain password.
 - Allow: this read only. It asks again next time.
-- Always Allow: remembered for this build of the binary.
+- Always Allow: remembered for every build signed by the same Team ID.
 - Deny: refuses the read.
 
 What to press:
 - Allow or Always Allow a prompt that names `granular` and `granular:ro:github.com` or `granular:rw:github.com`.
 - Deny a prompt that names anything else, such as `security` or `nc`. Something else is asking for a token.
 
-A prompt appears once per signing identity per item (`ro` and `rw` are two items). A signed rebuild keeps the approval. A new signing identity brings the prompts back until you rekey.
+A prompt appears once per Team ID per item (`ro` and `rw` are two items). A rebuild signed with the same Team ID keeps the approval. A different Team ID, such as another Apple ID, brings the prompts back until you run `granular-passwd --rekey --all`.
+
+## Signing certificate
+
+Once, on the computer that builds. `make` signs with an Apple Development certificate. A free Apple ID is enough. The certificate carries your Team ID, which is what lets macOS remember Always Allow across rebuilds.
+
+1. In Xcode: Settings, Accounts, add your Apple ID.
+2. Select the account, click Manage Certificates, click **+**, choose Apple Development.
+3. Check that it signs:
+   ```sh
+   security find-identity -v -p codesigning    # lists "Apple Development: you@example.com (ID)"
+   ```
+4. The first build asks to let `codesign` use the key. Choose Always Allow.
+
+If step 3 lists nothing, but `security find-identity -p codesigning` (without `-v`) lists the certificate, Apple's intermediate certificate is missing from your keychain:
+```sh
+curl -fsS -o /tmp/AppleWWDRCAG3.cer https://www.apple.com/certificateauthority/AppleWWDRCAG3.cer
+openssl x509 -inform DER -in /tmp/AppleWWDRCAG3.cer -noout -fingerprint -sha1
+# import only if it prints 06:EC:06:59:9F:4E:D0:02:7C:C5:89:56:B4:D3:AC:12:55:11:4F:35
+security import /tmp/AppleWWDRCAG3.cer -k ~/Library/Keychains/login.keychain-db
+```
+
+The certificate expires one year after you create it. When it does, `make` stops with "no valid Apple Development identity". Create a new one with the same steps. The requirement names the Team ID, not the certificate, so a certificate from the same Apple ID keeps working with no rekey. If the Team ID ever changes, run `granular-passwd --rekey --all`.
 
 ## Basic mode, no daemon
 
@@ -21,7 +43,7 @@ In your own terminal. On the computer with Spinel:
 ```sh
 make dist    # builds build/granular-<version>.tgz and its .sha256
 ```
-The first `make` runs `sign-identity.sh`, which makes a self-signed code-signing certificate in your login keychain and trusts it for code signing. macOS asks for your password.
+`make` signs with the certificate from [Signing certificate](#signing-certificate).
 
 On the computer you are setting up:
 ```sh
@@ -89,8 +111,8 @@ granular-audit
 ```
 In a clone of a repo you can push to (Test branch and the tests in [DEVELOPING.md](DEVELOPING.md)):
 ```sh
-granular-test-rw    # in your terminal
-granular-test-ro    # in a Claude session
+granular-test --rw    # in your terminal
+granular-test --ro    # in a Claude session
 ```
 
 Git and `gh` now decide in their own process by the starting rules: `claude` gets the read-only token, and your terminal and ssh sessions get the read-write token.
@@ -145,7 +167,7 @@ granular-passwd --export rw github.com | { read -r user && read -r pw && [ -n "$
 
 # stop the daemon (Ctrl-C in its tab), then remove everything
 rm -rf ~/.granular
-sudo rm /usr/local/bin/{granular,granular-git,granular-passwd,granular-daemon,granular-trust,gh,granular-audit,granular-test-ro,granular-test-rw}
+sudo rm /usr/local/bin/{granular,granular-git,granular-passwd,granular-daemon,granular-trust,gh,granular-audit,granular-test}
 git config --global --unset-all credential.helper
 # git config --global --add credential.helper osxkeychain    # only if your Xcode git does not already have it
 brew link gh    # then: gh auth login

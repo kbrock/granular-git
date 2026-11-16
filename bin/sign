@@ -1,0 +1,20 @@
+#!/bin/bash
+# Signs a binary with the Apple Development identity, then checks it carries exactly the requirement the
+# vault items trust: identifier granular, an Apple-issued certificate, and our Team ID. The Team ID is what
+# lets the Keychain remember "Always Allow" across builds. A build that signs differently fails here.
+# Usage: bin/sign BINARY
+binary=$1
+cd "$(dirname "$0")/.." || exit 1
+
+# The identity can be listed twice (the same certificate in two keychains), so take the first and sign by hash.
+line=$(security find-identity -v -p codesigning | grep '"Apple Development:' | head -1)
+id=$(echo "$line" | sed 's/^ *[0-9]*) \([0-9A-F]*\) .*/\1/')
+name=$(echo "$line" | sed 's/.*"\(.*\)"/\1/')
+[ -n "$id" ] || { echo "sign: no valid Apple Development identity (see TODO.md, Vault)"; exit 1; }
+team=$(security find-certificate -c "$name" -p | openssl x509 -noout -subject -nameopt RFC2253 | sed -n 's/.*OU=\([A-Z0-9]*\).*/\1/p')
+[ -n "$team" ] || { echo "sign: no Team ID in the certificate for $name"; exit 1; }
+want="identifier granular and anchor apple generic and certificate leaf[subject.OU] = $team"
+
+out=$(codesign --force -s "$id" -i granular -r "=designated => identifier granular and anchor apple generic and certificate leaf[subject.OU] = \"$team\"" "$binary" 2>&1) || { echo "$out"; exit 1; }
+got=$(codesign -d -r- "$binary" 2>&1 | sed -n 's/^designated => //p' | tr -d '"')
+[ "$got" = "$want" ] || { echo "sign: requirement is [$got], expected [$want]"; exit 1; }

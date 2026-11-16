@@ -1,84 +1,50 @@
 CFLAGS = -Wall -Wextra -Wno-deprecated-declarations
 BUILD  = build
+PREFIX = /usr/local/bin
 
-all: link
+LINKS   = granular-git granular-passwd granular-daemon granular-trust gh
+SCRIPTS = granular-audit granular-test
+NAMES   = granular $(LINKS) $(SCRIPTS)
+SOURCES = granular.rb $(wildcard lib/granular/*.rb)
+VERSION := $(shell sed -n 's/^VERSION = "\(.*\)"/\1/p' lib/granular/config.rb)
+TARBALL = $(BUILD)/granular-$(VERSION).tgz
 
-LINKS = granular-git granular-passwd granular-daemon granular-trust
-
-# link(target, source): the target is a symlink to the source's file name. It is made once, when the
-# target is missing, and after the source exists.
-define link
-$(1): | $(2)
-	ln -s $(notdir $(2)) $(1)
-endef
-
-$(foreach n,$(LINKS),$(eval $(call link,$(BUILD)/$(n),$(BUILD)/granular)))
-
-link: $(BUILD)/granular $(addprefix $(BUILD)/,$(LINKS))
+all: $(BUILD)/granular
 
 $(BUILD)/granular.o: granular.c granular.h
 	mkdir -p $(BUILD)
 	$(CC) $(CFLAGS) -c granular.c -o $@
 
-SIGN_ID = granular-signing
-
-$(BUILD)/granular: granular.rb $(wildcard lib/granular/*.rb) $(BUILD)/granular.o
-	./sign-identity.sh $(SIGN_ID)
+# Lint, compile, sign, test. A step that fails deletes the binary, so the next make starts over.
+$(BUILD)/granular: $(SOURCES) $(BUILD)/granular.o
+	bundle exec rubocop
 	spinel granular.rb -o $@ --link $(BUILD)/granular.o --link -Wl,-framework,Security --link -Wl,-framework,CoreFoundation
-	codesign --force -s $(SIGN_ID) $@
-	@codesign -d -vvv $@ 2>&1 | grep CDHash
+	@bin/sign $@
+	bin/ci $@
 
-PREFIX = /usr/local/bin
+# The links are real files in build, so install and dist take the same list.
+$(LINKS:%=$(BUILD)/%): $(BUILD)/granular
+	ln -sf granular $@
 
-$(PREFIX)/granular: $(BUILD)/granular
-	install -m 755 $< $@
-
-$(foreach n,$(LINKS) gh,$(eval $(call link,$(PREFIX)/$(n),$(PREFIX)/granular)))
-
-SCRIPTS = granular-audit granular-test-ro granular-test-rw
-
-$(addprefix $(PREFIX)/,$(SCRIPTS)): $(PREFIX)/%: %
-	install -m 755 $< $@
-
-install: $(PREFIX)/granular $(addprefix $(PREFIX)/,$(LINKS) gh $(SCRIPTS))
-
-# After a rebuild: install, then audit and test. Run it in your
-# own terminal. Restart granular-daemon in its tab first.
-refresh: install
+install: $(BUILD)/granular $(LINKS:%=$(BUILD)/%)
+	cd $(BUILD) && cp -Rf granular $(LINKS) $(PREFIX)
+	cp $(SCRIPTS) $(PREFIX)
 	$(PREFIX)/granular-audit
-	$(PREFIX)/granular-test-rw
 
 uninstall:
-	for n in granular-git granular-passwd granular-daemon granular-trust gh; do \
-		[ "$$(readlink $(PREFIX)/$$n)" = granular ] && rm $(PREFIX)/$$n; done; \
-		rm -f $(PREFIX)/granular
-	rm -f $(addprefix $(PREFIX)/,$(SCRIPTS))
+	rm -f $(NAMES:%=$(PREFIX)/%)
 
-VERSION := $(shell sed -n 's/^VERSION = "\(.*\)"/\1/p' lib/granular/config.rb)
+dist: $(TARBALL)
 
-# A tarball of what install puts in PREFIX, links included: sudo tar xzf granular-<version>.tgz -C /usr/local/bin
-dist: $(BUILD)/granular
-	rm -rf $(BUILD)/dist $(BUILD)/granular-*.tgz $(BUILD)/granular-*.sha256
-	mkdir -p $(BUILD)/dist
-	$(MAKE) install PREFIX=$(BUILD)/dist
-	cd $(BUILD)/dist && tar czf ../granular-$(VERSION).tgz *
-	cd $(BUILD) && shasum -a 256 granular-$(VERSION).tgz | tee granular-$(VERSION).tgz.sha256
-
-# Publishes a GitHub release for VERSION: builds the tarball and checksum, then gh creates the tag
-# v$(VERSION) on REMOTE and attaches both, with the notes from CHANGELOG.md. REMOTE is the remote main
-# tracks, else origin: make release REMOTE=upstream. Run it from your own terminal, on main, after the
-# bump is merged and pulled.
-REMOTE ?= $(or $(shell git config --get branch.main.remote),origin)
+$(TARBALL): $(BUILD)/granular $(LINKS:%=$(BUILD)/%) $(SCRIPTS)
+	tar czf $@ -C $(BUILD) granular $(LINKS) -C .. $(SCRIPTS)
+	cd $(BUILD) && shasum -a 256 $(notdir $@) | tee $(notdir $@).sha256
 
 release: dist
-	@test -z "$$(git status --porcelain --untracked-files=no)" || { echo "release: commit or stash your changes first"; exit 1; }
-	@[ "$$(git rev-parse --abbrev-ref HEAD)" = main ] || { echo "release: switch to main"; exit 1; }
-	@git fetch -q $(REMOTE) && [ "$$(git rev-parse HEAD)" = "$$(git rev-parse $(REMOTE)/main)" ] || { echo "release: main is not $(REMOTE)/main (git pull)"; exit 1; }
-	@grep -q '^## \[$(VERSION)\]' CHANGELOG.md || { echo "release: CHANGELOG.md has no [$(VERSION)] section"; exit 1; }
-	gh release create v$(VERSION) $(BUILD)/granular-$(VERSION).tgz $(BUILD)/granular-$(VERSION).tgz.sha256 \
-		--title v$(VERSION) --notes "$$(sed -n '/^## \[$(VERSION)\]/,/^## \[/{/^## \[/!p;}' CHANGELOG.md)"
+	bin/release
 
 clean:
 	rm -rf $(BUILD)
 
-.PHONY: all link install refresh uninstall dist release clean
+.PHONY: all install uninstall dist release clean
+.DELETE_ON_ERROR:

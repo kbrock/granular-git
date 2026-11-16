@@ -33,48 +33,38 @@ Steps:
 4. Run the tests below from this branch. They run `git push --dry-run` and change nothing on GitHub.
 5. When you are done: `git switch -`, then `git branch -D granular-test` and `git push origin --delete granular-test`
 
-## Test: granular-test-ro
+## Test: granular-test
 
-`granular-test-ro` asks: does the read-only profile do what we want? It changes nothing on GitHub; the push is a dry run.
-
-Steps:
-1. Start `claude` on the test branch from the Test branch section. A terminal whose node you moved to `ro` also works.
-2. Ask Claude to run `granular-test-ro`.
-
-Checks (PASS or FAIL for each; the script exits 1 if any fails):
-- Push is refused.
-- Push says write access is not granted.
-- `gh` can read.
-- The `gh` token has no `repo` scope.
-
-## Test: granular-test-rw
-
-`granular-test-rw` asks: does the read-write profile do what we want? It changes nothing on GitHub; the push is a dry run.
+`granular-test` reports which profile the caller gets, `rw` or `ro`. It changes nothing on GitHub; the push is a dry run, and it prints no tokens.
 
 Steps:
-1. Open your own terminal on the test branch from the Test branch section. A Claude session whose node you moved to `rw` also works.
-2. Run `granular-test-rw`.
+1. Open the test branch from the Test branch section in the caller you want to check: your own terminal (expect `rw`) or a `claude` session (expect `ro`). A terminal whose node you moved to `ro` also works.
+2. Run `granular-test`.
 
-Checks (PASS or FAIL for each; the script exits 1 if any fails):
-- Push is accepted.
-- Push is not refused for write access.
-- `gh` can read.
-- The `gh` token has the `repo` scope.
+It prints four observations and the level:
+- `push`: accepted or refused.
+- `message`: whether the push said write access is not granted.
+- `gh`: whether `gh` can read.
+- `scope`: whether the `gh` token has the `repo` scope.
+
+`level: rw` means accepted, no message, `gh` reads, `repo` scope. `level: ro` means refused, message shown, `gh` reads, no `repo` scope. Any other mix is `level: broken`, and the observations show which one disagrees.
+
+With no flag the script exits 0 for `rw` or `ro` and 1 for `broken`. `granular-test --rw` and `granular-test --ro` exit 0 only if the level is that one.
 
 ## Test: flipping
 
 A flip is checked by running the two tests either side of it, in one Claude session on the test branch from the Test branch section. A Claude session starts at `ro`. For a terminal, move its node to `ro` first. The flip needs the daemon.
 
 Steps:
-1. Start `granular-daemon` in another tab. In the session, run `granular-test-ro`. It passes.
+1. Start `granular-daemon` in another tab. In the session, run `granular-test --ro`. It passes.
 2. In the daemon's tab, type the session's node number and press Enter. The session is now `rw`.
-3. In the session, run `granular-test-rw`. It passes.
-4. Type the node number again. The session is `ro`. Run `granular-test-ro`. It passes.
+3. In the session, run `granular-test --rw`. It passes.
+4. Type the node number again. The session is `ro`. Run `granular-test --ro`. It passes.
 
 ## Attack scripts
 
 `test/support/` holds scripts that try to get around the rules. Run them from a Claude session on the test branch.
-- `double-fork.sh` runs `granular-test-ro` in an orphaned process and prints `BLOCKED` or `ATTACK WORKS`.
+- `double-fork.sh` runs `granular-test --ro` in an orphaned process and prints `BLOCKED` or `ATTACK WORKS`.
 - `unreadable-node.sh` runs a `claude` whose program file is deleted, and shows the process in the daemon's tab.
 
 ## Layout
@@ -85,9 +75,10 @@ Steps:
 
 ## Build and release
 
-- Compile: `make link`. Install: `make install`. Remove: `make uninstall`. Clean: `make clean`.
-- After a rebuild, run `make refresh` in your own terminal: it installs, then runs `granular-audit` and `granular-test-rw`. Restart `granular-daemon` first. The build prints the binary's `CDHash`, which changes with the code while the signing identity stays the same.
-- Run all three tests after every build. A rebuild signed with the same identity does not prompt again.
+- Build: `make` (lint, compile, sign, then `bin/ci`). Install: `make install` (copies, then runs `granular-audit`). Remove: `make uninstall`. Tarball: `make dist`. Publish: `make release`. Clean: `make clean`.
+- `make` signs quietly; check with `codesign -dvv build/granular` (Authority `Apple Development`, TeamIdentifier your Team ID). The links (`granular-git`, `gh`, ...) are files in `build/`; `make install` and `make dist` take the binary and links from there and the scripts from the repo root.
+- `bin/ci` is the check after a build, one line per step. Under Claude it checks that `ro` holds and says to run the rest in your own terminal. In your own terminal it also checks `rw`, with no daemon and through a test daemon on `GRANULAR_SOCKET`. `make release` needs the full run to pass.
+- After a rebuild, restart `granular-daemon`, then run `granular-test --rw` in your own terminal. A rebuild signed with the same Team ID does not prompt again.
 - Switches in `lib/granular/config.rb`. Rebuild after changing one.
   - `VAULT`: the keychain file in `~/Library/Keychains`.
   - `REQUIRE_DAEMON`: default `false`. `true` makes Git and `gh` give no token when the daemon is not running.

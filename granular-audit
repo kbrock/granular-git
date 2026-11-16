@@ -1,7 +1,7 @@
 #!/bin/bash
 # This ensures the machine is set up correctly: helper chain, no stray credential stores, vault and
 # items, gh link order. It calls the tool only to confirm it is wired in. It does not test what ro or rw
-# can do (that is granular-test-ro and granular-test-rw).
+# can do (that is granular-test).
 # Read-only. Run it from your own terminal. Each failure prints the command that fixes it. Exits 1 if
 # anything failed.
 

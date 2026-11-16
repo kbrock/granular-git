@@ -29,7 +29,7 @@ class Passwd
   def rekey(profile:, host:, description: "", set_description: false, quiet: false)
     return 1 unless ready?
     item = KEYCHAIN_PREFIX + profile + ":" + host
-    words = G.granular_kc_login(item, "").split(" ")
+    words = @vault.login(item, "").split(" ")
     if words.length < 2
       warn "granular-passwd: no #{profile} item for #{host}" unless quiet
       return quiet ? 2 : 1
@@ -59,7 +59,7 @@ class Passwd
       return 1
     end
     return 1 unless ready?
-    words = G.granular_kc_login(KEYCHAIN_PREFIX + profile + ":" + host, "").split(" ")
+    words = @vault.login(KEYCHAIN_PREFIX + profile + ":" + host, "").split(" ")
     if words.length < 2
       warn "granular-passwd: no #{profile} item for #{host}"
       return 1
@@ -93,11 +93,11 @@ class Passwd
 
   # Stores the item and reads it back.
   def write(item, user, token, description)
-    if G.granular_kc_set(item, user, token, description) != 0
+    if @vault.set(item, user, token, description) != 0
       warn "granular-passwd: keychain write failed"
       return 1
     end
-    if G.granular_kc_login(item, user) != user + " " + token + ((description == "") ? "" : " " + description)
+    if @vault.login(item, user) != user + " " + token + ((description == "") ? "" : " " + description)
       warn "granular-passwd: stored value did not read back"
       return 1
     end

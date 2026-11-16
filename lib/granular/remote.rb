@@ -3,16 +3,12 @@ class Remote
   # The daemon's reply line, "" if it does not answer, "down" if there is no daemon, or a deny if the
   # socket is not private to the user.
   def token(host, user)
-    fd = G.granular_fetch_socket(socket_path)
+    fd = G.granular_fetch_socket(SOCKET)
     return "down" if fd == -1
     return "deny socket is not private to you" if fd < 0
     G.granular_write_line(fd, request_for(host, user))
     reply = G.granular_read_line(fd)
     G.granular_close(fd)
     reply
-  end
-
-  def socket_path
-    ENV["HOME"] + "/.granular/sock"
   end
 end

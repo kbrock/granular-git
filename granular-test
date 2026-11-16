@@ -1,0 +1,54 @@
+#!/bin/bash
+# Reports the profile this caller gets, rw or ro, from what that profile can do: a push and the gh token.
+# Usage: granular-test [--ro | --rw]
+#   no flag: prints the level. Exits 0 for rw or ro, 1 when the checks disagree (broken).
+#   --ro or --rw: exits 0 only if the level is that one.
+# Run it inside a clone of a repo you can push to, public or private. It changes nothing on GitHub (a push
+# with --dry-run, and one read) and prints no tokens. A Claude session gets ro, your own terminal rw.
+
+expect=""
+case "$1" in
+  "") ;;
+  --ro) expect=ro ;;
+  --rw) expect=rw ;;
+  *)
+    echo "usage: granular-test [--ro | --rw]" >&2
+    exit 2
+    ;;
+esac
+
+dir=$(cd "$(dirname "$0")" && pwd)
+bin=$(dirname "$(command -v granular-git || echo "$dir/build/granular-git")")
+repo=$(git rev-parse --show-toplevel) || exit 1
+git -C "$repo" remote get-url origin >/dev/null || exit 1
+helper=(-c credential.helper= -c "credential.helper=$bin/granular-git")
+
+push_out=$(git -C "$repo" "${helper[@]}" push --dry-run 2>&1)
+push_status=$?
+gh_out=$(gh api -i user 2>&1)
+
+push=refused
+[ "$push_status" -eq 0 ] && push=accepted
+message=none
+grep -q "^granular: " <<<"$push_out" && message=shown
+gh=cannot-read
+head -1 <<<"$gh_out" | grep -q ' 200' && gh=reads
+scope=no-repo
+grep -qi '^x-oauth-scopes:.*repo' <<<"$gh_out" && scope=repo
+
+level=broken
+[ "$gh" = reads ] && [ "$push" = accepted ] && [ "$message" = none ] && [ "$scope" = repo ] && level=rw
+[ "$gh" = reads ] && [ "$push" = refused ] && [ "$message" = shown ] && [ "$scope" = no-repo ] && level=ro
+
+echo "granular-test ($repo)"
+echo "  push     $push"
+echo "  message  $message"
+echo "  gh       $gh"
+echo "  scope    $scope"
+echo "level: $level"
+
+if [ -n "$expect" ]; then
+  [ "$level" = "$expect" ]
+else
+  [ "$level" != broken ]
+fi

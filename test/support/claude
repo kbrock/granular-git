@@ -1,0 +1,10 @@
+#!/bin/bash
+# Runs its arguments as a child of a process named claude, so the caller's chain looks like Claude Code ran it.
+# Apple's /bin/bash is killed when copied, so this copies Homebrew's.
+for bash in /opt/homebrew/bin/bash /usr/local/bin/bash; do
+  [ -x "$bash" ] && break
+done
+dir=$(mktemp -d) || exit 1
+trap 'rm -rf "$dir"' EXIT
+cp "$bash" "$dir/claude" || exit 1
+"$dir/claude" -c '"$@"; exit $?' claude "$@"

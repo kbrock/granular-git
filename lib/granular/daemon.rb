@@ -9,17 +9,17 @@ class Daemon
   end
 
   def run
-    dir = ENV["HOME"] + "/.granular"
+    dir = File.dirname(SOCKET)
     if G.granular_private_dir(dir) != 0
       warn "granular-daemon: #{dir} is not a private directory of yours"
       return 1
     end
-    listener = G.granular_listen(dir + "/sock")
+    listener = G.granular_listen(SOCKET)
     if listener < 0
-      warn "granular-daemon: cannot listen on #{dir}/sock"
+      warn "granular-daemon: cannot listen on #{SOCKET}"
       return 1
     end
-    warn "granular-daemon: listening on #{dir}/sock" if @verbose
+    warn "granular-daemon: listening on #{SOCKET}" if @verbose
 
     warn "granular-daemon: type a node number and Enter to select the next profile. Enter alone lists the nodes."
     @table.show
