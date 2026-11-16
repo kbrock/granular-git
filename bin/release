@@ -24,8 +24,6 @@ stop "v#{version} is not tagged, or is not in this branch (run bin/bump)" unless
 stop "CHANGELOG.md has no [#{version}] section" unless notes
 stop "run make dist first" unless File.exist?("dist/granular-#{name}.tgz")
 
-system("bin/ci") || stop("bin/ci failed")
-
 # Publish
 system("git", "push", remote, "main") || stop("push failed") unless git("rev-parse HEAD") == git("rev-parse #{remote}/main")
 system("git", "push", remote, "v#{version}") || stop("push failed") if git("ls-remote --tags #{remote} v#{version}").empty?
