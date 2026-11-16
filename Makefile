@@ -45,7 +45,7 @@ $(TARBALL): $(BUILD)/granular $(LINKS:%=$(BUILD)/%) $(SCRIPTS)
 	cd $(DIST) && shasum -a 256 $(notdir $@) | tee $(notdir $@).sha256
 	@echo
 
-release: dist
+release:
 	bin/release
 
 clean:
