@@ -24,6 +24,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - `granular-git` and `granular-passwd` work with any host, not only `github.com`. A host is served when the vault holds an item for it under the caller's profile. A host with no item prints `granular: no token for <host> profile <name>`, and git prompts.
 - `granular-passwd --rekey --all` rekeys every item in the vault, whatever its host.
 - `granular-audit` groups its checks under headings (`granular-git`, `credential.helper`, `granular-daemon`, `vault`, `stored credentials`, `gh`). A FAIL line says what is wrong, and the vault's items are listed under the vault.
+- `granular`, `granular-git`, `granular-passwd`, `granular-daemon` and `granular-trust` each print only their own usage for `-h` or `--help`, and a bad argument prints that tool's usage. `granular --help` lists the tools. `--version` must be the only argument after `-v`.
+- `make dist` writes `dist/granular-<tag>[+commits].tgz` and its `.sha256`, named from git: `v0.2.0` at the tag, `v0.2.0+29` when 29 commits past it. It warns about uncommitted changes. `bin/release` publishes the same file.
 
 ## [0.2.0] - 2026-11-10
 
