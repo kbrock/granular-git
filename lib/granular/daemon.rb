@@ -1,6 +1,7 @@
 # granular-daemon: answers token requests by the caller's profile, and flips profiles from its terminal.
 class Daemon
-  def initialize(table:, responder:, verbose:)
+  def initialize(table:, responder:, socket:, verbose:)
+    @socket = socket
     @table = table
     @responder = responder
     @verbose = verbose
@@ -9,17 +10,17 @@ class Daemon
   end
 
   def run
-    dir = File.dirname(SOCKET)
+    dir = File.dirname(@socket)
     if G.granular_private_dir(dir) != 0
       warn "granular-daemon: #{dir} is not a private directory of yours"
       return 1
     end
-    listener = G.granular_listen(SOCKET)
+    listener = G.granular_listen(@socket)
     if listener < 0
-      warn "granular-daemon: cannot listen on #{SOCKET}"
+      warn "granular-daemon: cannot listen on #{@socket}"
       return 1
     end
-    warn "granular-daemon: listening on #{SOCKET}" if @verbose
+    warn "granular-daemon: listening on #{@socket}" if @verbose
 
     warn "granular-daemon: type a node number and Enter to select the next profile. Enter alone lists the nodes."
     @table.show
