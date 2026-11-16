@@ -10,17 +10,17 @@ def stop(message) = abort("release: #{message}")
 
 # Facts
 version = File.read("lib/granular/config.rb")[/^VERSION = "(.*)"/, 1]
-name = git("describe --tags --always").sub(/-(\d+)-g.*/, '+\1')
+name = "v#{version}"
 remote = ENV["REMOTE"] || git("config --get branch.main.remote")
 remote = "origin" if remote.empty?
-notes = File.read("CHANGELOG.md")[/^## \[#{version}\]\n(.*?)(?=^## \[|\z)/m, 1]
+notes = File.read("CHANGELOG.md")[/^## \[#{version}\][^\n]*\n(.*?)(?=^## \[|^\[|\z)/m, 1]
 git "fetch -q #{remote}"
 
 # Checks
 stop "commit or stash your changes first" unless git("status --porcelain -uno").empty?
 stop "switch to main" unless git("rev-parse --abbrev-ref HEAD") == "main"
 stop "#{remote}/main has commits main lacks (git pull)" unless system("git", "merge-base", "--is-ancestor", "#{remote}/main", "HEAD")
-stop "v#{version} is not on HEAD (run bin/bump)" unless git("rev-parse v#{version}^{commit}") == git("rev-parse HEAD")
+stop "v#{version} is not tagged, or is not in this branch (run bin/bump)" unless system("git", "merge-base", "--is-ancestor", name, "HEAD", err: File::NULL)
 stop "CHANGELOG.md has no [#{version}] section" unless notes
 stop "run make dist first" unless File.exist?("dist/granular-#{name}.tgz")
 
