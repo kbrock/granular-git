@@ -1,5 +1,13 @@
 # The table of nodes, and the walk that decides a process's profile.
 class Table
+  # A node matches a process by its pid, if it has one, and by its name, if it has one. A name starting
+  # with "/" is an executable path; any other name is a file name. The walk takes the caller, then its
+  # parents. For each process the first matching node with a profile, from the bottom of the table up,
+  # decides. Node 0 has pid 0, the parent of launchd, so the walk reaches it last. The nodes after the
+  # rules are slots, added as processes are claimed.
+  MAX_NODES = 32
+  SHELLS = ["sh", "bash", "zsh", "fish", "dash", "ksh", "tcsh"]
+
   attr_reader :nodes, :decider
 
   def initialize(chain)

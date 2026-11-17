@@ -6,6 +6,9 @@
 # message: the claude code cli asks for the token to call the API itself, and granular does not hand
 # it over.
 class Gh
+  # The gh that the wrapper runs. `brew unlink gh` leaves it here and takes it off PATH.
+  REAL_GH = "/opt/homebrew/opt/gh/bin/gh"
+
   def initialize(source)
     @source = source
   end

@@ -22,6 +22,9 @@ class Cli
     "usage: granular-trust   (your parents, one per line: distance up, name, pid)"
   ]
 
+  SELF_PREFIX = "granular-"
+  APPLETS = ["git", "passwd", "daemon", "trust", "gh"]
+
   # Each collaborator is built on first use. A test assigns a stub first: cli.local = LocalStub.new
   attr_writer :chain, :vault, :table, :terminal, :responder, :socket, :remote, :local
 

@@ -1,5 +1,7 @@
 # A process and its parents.
 class Chain
+  MAX_DEPTH = 64
+
   # Pids from pid up to pid 0, the parent of launchd. A chain that does not end at 0 is broken.
   def ancestors(pid)
     chain = []
