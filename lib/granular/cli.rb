@@ -23,7 +23,7 @@ class Cli
   ]
 
   # Each collaborator is built on first use. A test assigns a stub first: cli.local = LocalStub.new
-  attr_writer :chain, :vault, :table, :responder, :socket, :remote, :local
+  attr_writer :chain, :vault, :table, :terminal, :responder, :socket, :remote, :local
 
   def chain
     @chain ||= Chain.new
@@ -35,6 +35,10 @@ class Cli
 
   def table
     @table ||= Table.new(chain)
+  end
+
+  def terminal
+    @terminal ||= Terminal.new(table, chain)
   end
 
   def responder
@@ -120,7 +124,7 @@ class Cli
     args = args[1..] if verbose
     return 0 if version?(args) || help?(args, DAEMON_USAGE)
     return misuse(DAEMON_USAGE) unless args.length == 0
-    Daemon.new(table: table, responder: responder, socket: socket, verbose: verbose).run
+    Daemon.new(table: table, responder: responder, terminal: terminal, socket: socket, verbose: verbose).run
   end
 
   def trust_cli(args)
