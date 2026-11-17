@@ -23,7 +23,7 @@ class Git
       warn "granular: no token for #{host} profile #{reply[13..]}"
       return 0
     end
-    login = login_parts(reply)
+    login = Wire.login_parts(reply)
     if login.length != 3
       warn "granular-git: #{(reply == "") ? "no reply from daemon" : reply}"
       return 1
