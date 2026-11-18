@@ -6,13 +6,16 @@
 # message: the claude code cli asks for the token to call the API itself, and granular does not hand
 # it over.
 class Gh
+  # The gh that the wrapper runs. `brew unlink gh` leaves it here and takes it off PATH.
+  REAL_GH = "/opt/homebrew/opt/gh/bin/gh"
+
   def initialize(source)
     @source = source
   end
 
   def run(args:)
     if args[0] == "auth" && args[1] == "token"
-      held = login_parts(@source.token("github.com", ""))
+      held = Wire.login_parts(@source.token("github.com", ""))
       note = (held.length == 3 && held[2] != "") ? " " + held[2] : ""
       warn "gh: granular holds the token and does not print it.#{note}"
       return 1
@@ -23,7 +26,7 @@ class Gh
       return 1
     end
     reply = @source.token("github.com", "")
-    login = login_parts(reply)
+    login = Wire.login_parts(reply)
     if login.length != 3
       warn "gh: #{(reply == "") ? "no reply from daemon" : reply}"
       return 1

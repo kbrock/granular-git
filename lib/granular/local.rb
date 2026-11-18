@@ -6,6 +6,6 @@ class Local
   end
 
   def token(host, user)
-    @responder.reply_for(request_for(host, user), @table.profile_for(G.getpid))
+    @responder.reply_for(Wire.request_for(host, user), @table.profile_for(G.getpid))
   end
 end

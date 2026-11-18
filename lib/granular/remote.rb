@@ -10,7 +10,7 @@ class Remote
     fd = G.granular_fetch_socket(@socket)
     return "down" if fd == -1
     return "deny socket is not private to you" if fd < 0
-    G.granular_write_line(fd, request_for(host, user))
+    G.granular_write_line(fd, Wire.request_for(host, user))
     reply = G.granular_read_line(fd)
     G.granular_close(fd)
     reply

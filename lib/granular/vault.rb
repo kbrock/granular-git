@@ -1,5 +1,8 @@
 # The keychain file that holds the logins.
 class Vault
+  # A login is a Keychain item: service "granular:<profile>:<host>", account = username, secret = token.
+  KEYCHAIN_PREFIX = "granular:"
+
   def initialize(path)
     @path = path
   end

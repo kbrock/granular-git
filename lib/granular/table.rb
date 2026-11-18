@@ -1,6 +1,14 @@
 # The table of nodes, and the walk that decides a process's profile.
 class Table
-  attr_reader :nodes
+  # A node matches a process by its pid, if it has one, and by its name, if it has one. A name starting
+  # with "/" is an executable path; any other name is a file name. The walk takes the caller, then its
+  # parents. For each process the first matching node with a profile, from the bottom of the table up,
+  # decides. Node 0 has pid 0, the parent of launchd, so the walk reaches it last. The nodes after the
+  # rules are slots, added as processes are claimed.
+  MAX_NODES = 32
+  SHELLS = ["sh", "bash", "zsh", "fish", "dash", "ksh", "tcsh"]
+
+  attr_reader :nodes, :decider
 
   def initialize(chain)
     @chain = chain
@@ -85,30 +93,6 @@ class Table
     @nodes[0].profile
   end
 
-  # The whole chain on one line, outermost first: "login > zsh [2] > claude [1] ro > git". A process that
-  # can carry a profile shows its slot number. The process that decided shows the profile after its name.
-  # When the root decided, it leads the line: "root [0] ro > zsh > git".
-  def chain_label(pid, profile)
-    chain = @chain.ancestors(pid)
-    return "(unknown caller)" if chain.length == 0
-    label = ""
-    label = "root [0] #{profile}" if @decider == 0
-    j = chain.length - 1
-    while j >= 0
-      if chain[j] > 1
-        name = @chain.name(chain[j])
-        if !(j == 0 && name == "granular")
-          n = node_index(chain[j])
-          name = "#{name} [#{n}]" if n >= 0
-          name = "#{name} #{profile}" if chain[j] == @decider
-          label = (label == "") ? name : label + " > " + name
-        end
-      end
-      j -= 1
-    end
-    label
-  end
-
   # Frees slots of claudes that exited and gives a slot to every running claude that has none.
   def scan_claudes
     forget_gone
@@ -118,25 +102,6 @@ class Table
       pid = running[k].to_i
       claim_slot(pid) if node_index(pid) < 0
       k += 1
-    end
-  end
-
-  def show
-    scan_claudes
-    home = ENV["HOME"]
-    i = 0
-    while i < @nodes.length
-      if i == 0
-        warn "  0: root  #{@nodes[0].profile}"
-      elsif @nodes[i].pid == -1 && @nodes[i].name != ""
-        warn "  #{i}: #{@nodes[i].name}  #{@nodes[i].profile}"
-      elsif !@nodes[i].free?
-        now = profile_for(@nodes[i].pid)
-        cwd = G.granular_pid_cwd(@nodes[i].pid)
-        cwd = "~" + cwd[home.length..] if cwd.start_with?(home)
-        warn "  #{i}: #{@chain.name(@nodes[i].pid)} pid=#{@nodes[i].pid} #{now}  #{cwd}"
-      end
-      i += 1
     end
   end
 end
