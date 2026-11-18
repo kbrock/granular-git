@@ -10,10 +10,6 @@ class Node
     @name = name
   end
 
-  def free?
-    @pid == -1 && @name == "" && @profile == ""
-  end
-
   # True if this node is for the process pid, whose executable is at path.
   def match?(pid, path)
     return false if @pid == -1 && @name == ""
@@ -25,17 +21,5 @@ class Node
   # The process has exited, or its pid was reused.
   def gone?
     @pid > 0 && G.granular_pid_start(@pid) != @start
-  end
-
-  def clear
-    @pid = -1
-    @start = ""
-    @profile = ""
-  end
-
-  def claim(pid)
-    @pid = pid
-    @start = G.granular_pid_start(pid)
-    @profile = ""
   end
 end
