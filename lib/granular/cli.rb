@@ -19,14 +19,16 @@ class Cli
     "usage: granular-daemon [-v]"
   ]
   TRUST_USAGE = [
-    "usage: granular-trust   (your parents, one per line: distance up, name, pid)"
+    "usage: granular-trust   (your parents, one per line: distance up, name, pid)",
+    "       granular-trust -N   (ask the daemon to watch the parent N up, -1 the parent)",
+    "       granular-trust -N <profile>   (also give it the profile; rw only)"
   ]
 
   SELF_PREFIX = "granular-"
   APPLETS = ["git", "passwd", "daemon", "trust", "gh"]
 
   # Each collaborator is built on first use. A test assigns a stub first: cli.local = LocalStub.new
-  attr_writer :chain, :vault, :table, :terminal, :responder, :socket, :remote, :local
+  attr_writer :chain, :vault, :table, :terminal, :responder, :can, :socket, :remote, :local
 
   def chain
     @chain ||= Chain.new
@@ -42,6 +44,10 @@ class Cli
 
   def terminal
     @terminal ||= Terminal.new(table, chain)
+  end
+
+  def can
+    @can ||= Can.new
   end
 
   def responder
@@ -106,7 +112,7 @@ class Cli
     verbose = args[0] == "-v"
     args = args[1..] if verbose
     return 0 if version?(args) || help?(args, PASSWD_USAGE)
-    passwd = Passwd.new(can: Can.new, vault: vault, caller_profile: table.profile_for(G.getpid), stdout_tty: G.isatty(1) != 0, verbose: verbose)
+    passwd = Passwd.new(can: can, vault: vault, caller_profile: table.profile_for(G.getpid), stdout_tty: G.isatty(1) != 0, verbose: verbose)
     if args.length == 2 && args[0] == "--rekey" && args[1] == "--all"
       passwd.rekey_all
     elsif args.length == 3 && args[0] == "--export"
@@ -127,14 +133,22 @@ class Cli
     args = args[1..] if verbose
     return 0 if version?(args) || help?(args, DAEMON_USAGE)
     return misuse(DAEMON_USAGE) unless args.length == 0
-    Daemon.new(table: table, responder: responder, terminal: terminal, socket: socket, verbose: verbose).run
+    Daemon.new(table: table, responder: responder, terminal: terminal, can: can, socket: socket, verbose: verbose).run
   end
 
   def trust_cli(args)
     args = args[1..] if args[0] == "-v"
     return 0 if version?(args) || help?(args, TRUST_USAGE)
-    return misuse(TRUST_USAGE) unless args.length == 0
-    Trust.new(chain).run
+    trust = Trust.new(chain, remote)
+    return trust.run if args.length == 0
+    return misuse(TRUST_USAGE) if args.length > 2
+    return misuse(TRUST_USAGE) unless distance_up?(args[0])
+    trust.mark(distance: -args[0].to_i, profile: (args.length == 2) ? args[1] : "")
+  end
+
+  # true for "-1", "-2", ...: a distance up from this process.
+  def distance_up?(word)
+    word.length > 1 && word.start_with?("-") && word[1..].to_i > 0 && word[1..].to_i.to_s == word[1..]
   end
 
   # true after printing the version, when that is all args asks for.

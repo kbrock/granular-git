@@ -57,5 +57,8 @@ done
 step "test daemon starts" test -S "$GRANULAR_SOCKET"
 step "rw, daemon" granular-test --rw
 step "ro under claude, daemon" test/support/claude granular-test --ro
+step "trust marks the parent, daemon" sh -c 'granular-trust -1 ro >/dev/null && granular-test --ro'
+step "trust refused under claude, daemon" test/support/claude sh -c '! granular-trust -1 rw'
+step "trust watch allowed under claude, daemon" test/support/claude sh -c 'granular-trust -1 >/dev/null'
 echo "==="
 exit "$failed"
