@@ -4,8 +4,6 @@ class Table
   # file name. A watched process matches by its pid. The walk takes the caller, then its parents. For each
   # process the first match with a profile decides: watched processes first, then the rules from the last
   # to the first. The root rule has pid 0, the parent of launchd, so the walk reaches it last.
-  SHELLS = ["sh", "bash", "zsh", "fish", "dash", "ksh", "tcsh"]
-
   attr_reader :rules, :watched, :decider
 
   def initialize(chain)
@@ -31,12 +29,14 @@ class Table
     -1
   end
 
-  # Starts watching pid, with no profile of its own yet. False if the process is not running.
+  # Starts watching pid, with the profile it has now, so a change to the processes above it no longer
+  # reaches it. False if the process is not running.
   def watch(pid)
     return true if watched_index(pid) >= 0
     start = G.granular_pid_start(pid)
     return false if start == ""
-    @watched << Node.new(pid, start, "", "")
+    profile = profile_for(pid)
+    @watched << Node.new(pid, start, profile, "")
     true
   end
 
@@ -58,6 +58,11 @@ class Table
       i += 1
     end
     -1
+  end
+
+  # True if pid is the process caller or one of its parents.
+  def ancestor?(caller, pid)
+    @chain.ancestors(caller).include?(pid)
   end
 
   # Stops watching the processes that have exited.
@@ -87,37 +92,24 @@ class Table
     ""
   end
 
-  # The profile for pid. The caller is matched against the table, then its parent, up to pid 0.
-  # A matching process is watched if it is not yet, so it can be given a profile. A process whose path
-  # cannot be read and has no entry of its own stops the walk with the root profile: it could be a claude
-  # whose binary was replaced. When the root decides, the outermost shell is watched. A chain that never
-  # reached pid 0 gets the root profile.
+  # The profile for pid. The caller is matched against the table, then its parent, up to pid 0. A process
+  # whose path cannot be read and has no entry of its own stops the walk with the root profile: it could
+  # be a claude whose binary was replaced. A chain that never reached pid 0 gets the root profile.
   def profile_for(pid)
     chain = @chain.ancestors(pid)
     @decider = 0
     forget_gone
-    shell = -1
     j = 0
     while j < chain.length
       path = G.granular_pid_path(chain[j])
       profile = match_profile(chain[j], path)
       if profile != ""
         @decider = chain[j]
-        if chain[j] == 0
-          watch(shell) if shell != -1
-        else
-          watch(chain[j])
-        end
         return profile
       end
-      if path == "" && chain[j] > 0
-        watch(chain[j])
-        return @rules[0].profile
-      end
-      shell = chain[j] if SHELLS.include?(File.basename(path))
+      return @rules[0].profile if path == "" && chain[j] > 0
       j += 1
     end
-    watch(shell) if shell != -1
     @rules[0].profile
   end
 

@@ -5,6 +5,12 @@ class Wire
     (user == "") ? "get " + host : "get " + host + " " + user
   end
 
+  # "trust <pid> <profile>" gives the process pid the profile. "trust <pid>" only asks the daemon to
+  # watch it.
+  def self.trust_request(pid, profile)
+    (profile == "") ? "trust " + pid.to_s : "trust " + pid.to_s + " " + profile
+  end
+
   # ["<user>", "<token>", "<description>"] from an "ok <user> <token> <description words>" reply, with ""
   # for no description, and [] for anything else.
   def self.login_parts(reply)

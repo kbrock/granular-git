@@ -1,12 +1,15 @@
 # The daemon's terminal: lists the nodes, flips a node to its next profile, and labels each request's chain.
 class Terminal
+  # The line for a request ends before the first of these.
+  CUT = ["git", "git-remote-http", "git-remote-https"]
+
   def initialize(table, chain)
     @table = table
     @chain = chain
     # The profiles a flip cycles through, in order. The terminal adds to the end.
     @profiles = ["ro", "rw"]
-    # The numbers the tab shows: 0 is the root, then the rules, then each watched process in the order it was
-    # first seen. A number stays with its entry; an entry whose process exited stays as a gap.
+    # The numbers the tab shows: 0 is the root, then the rules, then each marked process. A number stays with
+    # its process until the process exits, and then the number is free again.
     @listed = []
     i = 0
     while i < table.rules.length
@@ -20,68 +23,101 @@ class Terminal
     j = 0
     while j < @table.watched.length
       node = @table.watched[j]
-      known = false
-      i = @listed.length - 1
-      while i >= 0
-        known = true if @listed[i].pid == node.pid && @listed[i].start == node.start
-        i -= 1
-      end
-      @listed << node unless known
+      place(node) unless listed?(node)
       j += 1
     end
   end
 
-  # The number of the newest entry for pid, or -1.
+  def listed?(node)
+    i = @listed.length - 1
+    while i >= 0
+      return true if @listed[i].pid == node.pid && @listed[i].start == node.start
+      i -= 1
+    end
+    false
+  end
+
+  # Puts node at the lowest number whose process has exited, or at the end. Returns the number.
+  def place(node)
+    i = @table.rules.length
+    while i < @listed.length
+      if @listed[i].gone?
+        @listed[i] = node
+        return i
+      end
+      i += 1
+    end
+    @listed << node
+    @listed.length - 1
+  end
+
+  # The number of the marked process pid, or -1.
   def number_for(pid)
     sync
     i = @listed.length - 1
     while i >= 0
-      return i if @listed[i].pid == pid
+      return i if @listed[i].pid == pid && !@listed[i].gone?
       i -= 1
     end
     -1
   end
 
-  # The whole chain on one line, outermost first: "login > zsh [2] > claude [1] ro > git". A process that
-  # can carry a profile shows its slot number. The process that decided shows the profile after its name.
-  # When the root decided, it leads the line: "root [0] ro > zsh > git".
-  def chain_label(pid, profile)
+  # The line logged for a request. When a marked process decides, it is the whole line: "bash [8] rw".
+  # Otherwise the chain, outermost first, ending before the first git (or its helpers), with a run of
+  # processes of one name shown as its outermost: "login > bash > claude ro". A marked process shows its
+  # number, and the process that decided shows the profile after its name. When the root decided, the line
+  # leads with "root [0] ro". tool is the granular tool that asked ("trust"), shown last; "" for git and gh.
+  def chain_label(pid, profile, tool)
     chain = @chain.ancestors(pid)
     return "(unknown caller)" if chain.length == 0
+    decider = @table.decider
+    return "#{@chain.name(decider)} [#{number_for(decider)}] #{profile}" if decider > 0 && @table.watched_index(decider) >= 0
     label = ""
-    label = "root [0] #{profile}" if @table.decider == 0
+    label = "root [0] #{profile}" if decider == 0
     j = chain.length - 1
     while j >= 0
-      if chain[j] > 1
-        name = @chain.name(chain[j])
-        if !(j == 0 && name == "granular")
+      name = @chain.name(chain[j])
+      break if CUT.include?(name)
+      if chain[j] > 1 && !(j < chain.length - 1 && name == @chain.name(chain[j + 1]))
+        if j == 0 && name == "granular"
+          name = (tool == "") ? "" : "granular-" + tool
+        else
           n = number_for(chain[j])
           name = "#{name} [#{n}]" if n >= 0
-          name = "#{name} #{profile}" if chain[j] == @table.decider
-          label = (label == "") ? name : label + " > " + name
+          name = "#{name} #{profile}" if chain[j] == decider
         end
+        label = (label == "") ? name : label + " > " + name unless name == ""
       end
       j -= 1
     end
     label
   end
 
+  # The process and where it runs, for the log: "claude 85199 ~/src/granular-git".
+  def process_label(pid)
+    "#{@chain.name(pid)} #{pid} #{directory(pid)}"
+  end
+
+  # The working directory of pid, with the home directory as "~".
+  def directory(pid)
+    home = ENV["HOME"]
+    cwd = G.granular_pid_cwd(pid)
+    cwd.start_with?(home) ? "~" + cwd[home.length..] : cwd
+  end
+
   def show
     @table.scan_claudes
     sync
-    home = ENV["HOME"]
     i = 0
     while i < @listed.length
       node = @listed[i]
       if i == 0
         warn "  0: root  #{node.profile}"
       elsif node.pid == -1
-        warn "  #{i}: #{node.name}  #{node.profile}"
-      elsif !node.gone?
+        warn "  #{i}: #{File.basename(node.name)}  #{node.profile}"
+      elsif @table.watched_index(node.pid) >= 0 && !node.gone?
         now = @table.profile_for(node.pid)
-        cwd = G.granular_pid_cwd(node.pid)
-        cwd = "~" + cwd[home.length..] if cwd.start_with?(home)
-        warn "  #{i}: #{@chain.name(node.pid)} pid=#{node.pid} #{now}  #{cwd}"
+        warn "  #{i}: #{@chain.name(node.pid)} pid=#{node.pid} #{now}  #{directory(node.pid)}"
       end
       i += 1
     end

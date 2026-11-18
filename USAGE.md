@@ -30,7 +30,7 @@ rex > login [8] rw > bash > git > git > git-remote-http
 
 ## granular-trust
 
-Prints the processes above you: the distance up, the name and the pid. It reads no profile and does not contact the daemon.
+Prints the processes above you: the distance up, the name and the pid. On its own it reads no profile and does not contact the daemon.
 ```
 -3  login  50249
 -2  bash  50250
@@ -38,6 +38,11 @@ Prints the processes above you: the distance up, the name and the pid. It reads 
 0  granular  61140
 ```
 Use it to find the pid of the shell you want, or to see where a process sits in a chain.
+
+`granular-trust -1` asks the daemon to watch the parent, so a manager can see it and set its profile. `-2` is the grandparent, and so on. Any caller may ask. `granular-trust -1 <profile>` also gives the parent the profile, and the daemon takes that only from an `rw` caller. Both apply only to a process in the caller's own chain. A process given a profile and everything it starts get that profile, until it exits or the daemon restarts. With no daemon it prints "no daemon is running".
+```
+sh -c 'granular-trust -1 rw'    # the sh gets rw
+```
 
 ## granular-passwd
 

@@ -80,7 +80,8 @@ const char *granular_claude_pids(void)
 			char path[PROC_PIDPATHINFO_MAXSIZE];
 			char num[16];
 
-			if (proc_pidpath(pid, path, sizeof(path)) <= 0 || !is_claude_path(path))
+			/* A claude whose binary was replaced has no readable path; its name still lists it. */
+			if (proc_pidpath(pid, path, sizeof(path)) > 0 ? !is_claude_path(path) : strcmp(procs[i].kp_proc.p_comm, "claude"))
 				continue;
 			snprintf(num, sizeof(num), "%d ", pid);
 			if (used + strlen(num) < sizeof(buf)) {

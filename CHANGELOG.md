@@ -6,6 +6,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Added
+- `granular-trust -1` asks the running daemon to watch your parent process, and `granular-trust -1 <profile>` also gives it the profile. `-2` is the grandparent, and so on. Any caller may ask to be watched; the profile needs a caller whose profile allows it (`rw`). Both apply only to a process in the caller's own chain. Without a daemon it says so.
+
 ### Fixed
 - `make install` installs `granular` as a new file, so macOS checks the new signature. Copying over the old binary left it with the old signature, and every run was killed (`Killed: 9`).
 
