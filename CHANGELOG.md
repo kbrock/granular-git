@@ -6,6 +6,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Fixed
+- `make install` installs `granular` as a new file, so macOS checks the new signature. Copying over the old binary left it with the old signature, and every run was killed (`Killed: 9`).
+
 ## [0.3.0] - 2026-11-16
 
 ### Added

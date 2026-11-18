@@ -89,6 +89,6 @@ Steps:
   bin/bump                         # on the feature branch: suggests the version, commits "Release X"
   # merge the branch into main
   git checkout main && git pull
-  make release                     # builds the tarball and .sha256, gh tags vX and attaches both
+  make release                     # pushes main and the tag, and gh attaches dist/granular-vX-<arch>.tgz
   ```
   Run `make release` in your own terminal: it needs the `rw` token. `make release REMOTE=upstream` uses another remote.

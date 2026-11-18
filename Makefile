@@ -8,8 +8,9 @@ SCRIPTS = granular-audit granular-test
 NAMES   = granular $(LINKS) $(SCRIPTS)
 SOURCES = granular.rb $(wildcard lib/granular/*.rb)
 # v0.2.0 at that tag, v0.2.0+29 when 29 commits past it.
+ARCH := $(shell uname -m)
 NAME := $(shell git describe --tags --always | sed 's/-\([0-9]*\)-g.*/+\1/')
-TARBALL = $(DIST)/granular-$(NAME).tgz
+TARBALL = $(DIST)/granular-$(NAME)-$(ARCH).tgz
 
 all: $(BUILD)/granular
 
@@ -24,13 +25,17 @@ $(BUILD)/granular: $(SOURCES) $(BUILD)/granular.o
 	@bin/sign $@
 	bin/ci $@
 
-# The links are real files in build, so install and dist take the same list.
+# The links and scripts are in build, so install and dist take the same list.
 $(LINKS:%=$(BUILD)/%): $(BUILD)/granular
 	ln -sf granular $@
 
-install: $(BUILD)/granular $(LINKS:%=$(BUILD)/%)
-	cd $(BUILD) && cp -Rf granular $(LINKS) $(PREFIX)
-	cp $(SCRIPTS) $(PREFIX)
+$(SCRIPTS:%=$(BUILD)/%): $(BUILD)/%: %
+	cp $< $@
+
+# install writes a new file and renames it into place. Copying over the old binary keeps its inode, and macOS kills it (Killed: 9) on the stale signature.
+install: $(NAMES:%=$(BUILD)/%)
+	cd $(BUILD) && install -m 755 granular $(SCRIPTS) $(PREFIX)
+	cd $(PREFIX) && for l in $(LINKS); do ln -sf granular $$l; done
 	$(PREFIX)/granular-audit
 
 uninstall:
@@ -38,18 +43,17 @@ uninstall:
 
 dist: $(TARBALL)
 
-$(TARBALL): $(BUILD)/granular $(LINKS:%=$(BUILD)/%) $(SCRIPTS)
+$(TARBALL): $(NAMES:%=$(BUILD)/%)
 	@git diff --quiet HEAD || echo "warning: uncommitted changes are in this tarball" >&2
 	@mkdir -p $(DIST)
-	tar czf $@ -C $(BUILD) granular $(LINKS) -C .. $(SCRIPTS)
-	cd $(DIST) && shasum -a 256 $(notdir $@) | tee $(notdir $@).sha256
-	@echo
+	tar czf $@ -C $(BUILD) $(NAMES)
+	@echo $@
 
 release:
 	bin/release
 
 clean:
-	rm -rf $(BUILD) $(DIST)
+	rm -rf $(BUILD)
 
 .PHONY: all install uninstall dist release clean
 .DELETE_ON_ERROR:
