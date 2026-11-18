@@ -53,7 +53,7 @@ release:
 	bin/release
 
 clean:
-	rm -rf $(BUILD) $(DIST)
+	rm -rf $(BUILD)
 
 .PHONY: all install uninstall dist release clean
 .DELETE_ON_ERROR:
