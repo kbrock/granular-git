@@ -8,8 +8,9 @@ SCRIPTS = granular-audit granular-test
 NAMES   = granular $(LINKS) $(SCRIPTS)
 SOURCES = granular.rb $(wildcard lib/granular/*.rb)
 # v0.2.0 at that tag, v0.2.0+29 when 29 commits past it.
+ARCH := $(shell uname -m)
 NAME := $(shell git describe --tags --always | sed 's/-\([0-9]*\)-g.*/+\1/')
-TARBALL = $(DIST)/granular-$(NAME).tgz
+TARBALL = $(DIST)/granular-$(NAME)-$(ARCH).tgz
 
 all: $(BUILD)/granular
 
@@ -46,8 +47,7 @@ $(TARBALL): $(NAMES:%=$(BUILD)/%)
 	@git diff --quiet HEAD || echo "warning: uncommitted changes are in this tarball" >&2
 	@mkdir -p $(DIST)
 	tar czf $@ -C $(BUILD) $(NAMES)
-	cd $(DIST) && shasum -a 256 $(notdir $@) | tee $(notdir $@).sha256
-	@echo
+	@echo $@
 
 release:
 	bin/release
