@@ -1,0 +1,28 @@
+#!/bin/bash
+
+# Usage: bin/ci [binary [story...]]   (default build/dev/granular, every story in test/stories)
+
+# Runs the stories against the dev build, in parallel. Each story makes its own vault of fake tokens, socket
+# and daemon, so it runs the same under Claude as in a terminal, and one story can run alone. The
+# real-token checks are bin/smoke's.
+
+cd "$(dirname "$0")/.." || exit 1
+export GRANULAR_BIN=${1:-build/dev/granular}
+shift
+stories=("$@")
+[ ${#stories[@]} -gt 0 ] || stories=(test/stories/*.sh)
+
+out=$(mktemp -d)
+trap 'rm -rf "$out"' EXIT
+for story in "${stories[@]}"; do
+  "$story" >"$out/$(basename "$story").out" 2>&1 &
+done
+wait
+
+failed=0
+for story in "${stories[@]}"; do
+  echo "== $(basename "$story")"
+  cat "$out/$(basename "$story").out"
+  grep -q '^FAIL' "$out/$(basename "$story").out" && failed=1
+done
+exit "$failed"

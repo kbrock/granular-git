@@ -1,0 +1,3 @@
+#!/bin/bash
+# What git does to get a login: runs granular-git as the credential helper for a made-up host, with no network.
+printf 'protocol=https\nhost=dev.invalid\n\n' | GIT_TERMINAL_PROMPT=0 git -c credential.helper= -c "credential.helper=$(command -v granular-git)" credential fill

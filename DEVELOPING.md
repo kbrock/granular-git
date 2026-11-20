@@ -75,9 +75,9 @@ Steps:
 
 ## Build and release
 
-- Build: `make` (lint, compile, sign, then `bin/ci`). Install: `make install` (copies, then runs `granular-audit`). Remove: `make uninstall`. Tarball: `make dist`. Publish: `make release`. Clean: `make clean`.
+- Check: `make` (lint, unit tests, dev build, stories; runs anywhere). Build: `make build` (that, then compile, sign, `bin/smoke`). Install: `make install` (copies, then runs `granular-audit`). Remove: `make uninstall`. Tarball: `make dist`. Publish: `make release`. Clean: `make clean`.
 - `make` signs quietly; check with `codesign -dvv build/granular` (Authority `Apple Development`, TeamIdentifier your Team ID). The links (`granular-git`, `gh`, ...) are files in `build/`; `make install` and `make dist` take the binary and links from there and the scripts from the repo root.
-- `bin/ci` is the check after a build, one line per step. Under Claude it checks that `ro` holds and says to run the rest in your own terminal. In your own terminal it also checks `rw`, with no daemon and through a test daemon on `GRANULAR_SOCKET`. `make release` needs the full run to pass.
+- `bin/smoke` is the check after a build, one line per step. Under Claude it checks that `ro` holds and says to run the rest in your own terminal. In your own terminal it also checks `rw`, with no daemon and through a test daemon on `GRANULAR_SOCKET`. `make release` needs the full run to pass.
 - After a rebuild, restart `granular-daemon`, then run `granular-test --rw` in your own terminal. A rebuild signed with the same Team ID does not prompt again.
 - Switches in `lib/granular/config.rb`. Rebuild after changing one.
   - `VAULT`: the keychain file in `~/Library/Keychains`.
@@ -92,3 +92,36 @@ Steps:
   make release                     # pushes main and the tag, and gh attaches dist/granular-vX-<arch>.tgz
   ```
   Run `make release` in your own terminal: it needs the `rw` token. `make release REMOTE=upstream` uses another remote.
+
+## Checklists
+
+Run them in your own terminal. Claude runs only the `ro` steps.
+
+### After a build
+
+- [ ] `make build` passes (stories, rubocop, build, sign, `bin/smoke`).
+- [ ] `bin/smoke` passes in full, with the `rw` and daemon steps.
+- [ ] `make install`, then `granular --version` prints a version (no `Killed: 9`).
+- [ ] `granular-audit` has no `FAIL`.
+- [ ] Restart `granular-daemon`, then `granular-test --rw`.
+
+`bin/ci` (`make`) covers two marked sessions in the daemon tab: each has its own number, flipping one leaves the other (`gh` and push included), the chain line shows the number, and an exited session leaves the tab.
+
+When the change touches identity (`Table`, `Terminal`, `Daemon`, `Chain`, `Trust`):
+- [ ] [you] Sublime Merge: whether it uses the helper (`open -a` reparents to launchd and gets `rw`).
+
+When the change touches the vault:
+- [ ] [you] A locked vault: the failure message names the cause.
+- [ ] [you] `security find-generic-password -s granular:rw:github.com -w ~/Library/Keychains/granular.keychain-db` prompts and names `security`.
+- [ ] [you] The vault creation dialog (needs the vault removed).
+
+### Before a release
+
+- [ ] On the feature branch, tree clean, changes listed under `[Unreleased]` in `CHANGELOG.md`.
+- [ ] `USAGE.md`, `INSTALL.md` and this file match the change.
+- [ ] The tokens in the vault have not expired.
+- [ ] The After a build list passes on the final commit.
+- [ ] `bin/bump`: version, `Release X` commit, tag and `dist/` tarball (named with `<arch>`).
+- [ ] Merge into `main`, `git pull`.
+- [ ] Ask for the go-ahead to push, then `make release`.
+- [ ] `make install` from the released tag on each machine (Intel: `brew unlink gh` first).

@@ -1,0 +1,16 @@
+#!/bin/bash
+# The level this caller gets, from the token the credential helper hands out. A dev build's vault holds fake
+# tokens: fake-ro-token and fake-rw-token. Same output and exit status as granular-test.
+# Usage: level [--ro | --rw]
+out=$(printf 'protocol=https\nhost=dev.invalid\n\n' | granular-git get 2>/dev/null)
+level=broken
+case "$out" in
+  *fake-rw-token*) level=rw ;;
+  *fake-ro-token*) level=ro ;;
+esac
+echo "level: $level"
+case "$1" in
+  --ro) [ "$level" = ro ] ;;
+  --rw) [ "$level" = rw ] ;;
+  *) [ "$level" != broken ] ;;
+esac
