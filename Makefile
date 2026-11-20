@@ -24,7 +24,7 @@ $(BUILD)/granular: $(SOURCES) $(BUILD)/granular.o
 	bin/unit
 	spinel granular.rb -o $@ --link $(BUILD)/granular.o --link -Wl,-framework,Security --link -Wl,-framework,CoreFoundation
 	@bin/sign $@
-	bin/ci $@
+	bin/smoke $@
 
 # The links and scripts are in build, so install and dist take the same list.
 $(LINKS:%=$(BUILD)/%): $(BUILD)/granular

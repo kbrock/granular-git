@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# Usage: bin/ci [binary]   (default build/granular)
+# Usage: bin/smoke [binary]   (default build/granular)
 
 # test that a build properly handles git and gh
 # runs with daemons, with claude and without
@@ -42,7 +42,7 @@ step "ro under claude, no daemon" test/support/claude granular-test --ro
 
 echo "==="
 if [ -n "$CLAUDECODE" ]; then
-  echo "skipped: rw and the daemon. Run bin/ci in your own terminal."
+  echo "skipped: rw and the daemon. Run bin/smoke in your own terminal."
   exit "$failed"
 fi
 
