@@ -6,7 +6,7 @@ PREFIX = /usr/local/bin
 LINKS   = granular-git granular-passwd granular-daemon granular-trust gh
 SCRIPTS = granular-audit granular-test
 NAMES   = granular $(LINKS) $(SCRIPTS)
-SOURCES = granular.rb $(wildcard lib/granular/*.rb)
+SOURCES = granular.rb lib/granular.rb $(wildcard lib/granular/*.rb)
 # v0.2.0 at that tag, v0.2.0+29 when 29 commits past it.
 ARCH := $(shell uname -m)
 NAME := $(shell git describe --tags --always | sed 's/-\([0-9]*\)-g.*/+\1/')
