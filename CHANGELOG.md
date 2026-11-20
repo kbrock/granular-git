@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-11-20
+
 ### Added
 - `granular-trust -1` asks the running daemon to watch your parent process, and `granular-trust -1 <profile>` also gives it the profile. `-2` is the grandparent, and so on. Any caller may ask to be watched; the profile needs a caller whose profile allows it (`rw`). Both apply only to a process in the caller's own chain. Without a daemon it says so.
 
@@ -62,7 +64,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - `make dist` builds `build/granular-<version>.tgz` with the installed files, for a computer without Spinel.
 - `granular-git --version`.
 
-[Unreleased]: https://github.com/kbrock/granular-git/compare/v0.3.0...HEAD
+[Unreleased]: https://github.com/kbrock/granular-git/compare/v0.4.0...HEAD
+[0.4.0]: https://github.com/kbrock/granular-git/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/kbrock/granular-git/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/kbrock/granular-git/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/kbrock/granular-git/releases/tag/v0.1.0
