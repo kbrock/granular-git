@@ -21,6 +21,7 @@ $(BUILD)/granular.o: granular.c granular.h
 # Lint, compile, sign, test. A step that fails deletes the binary, so the next make starts over.
 $(BUILD)/granular: $(SOURCES) $(BUILD)/granular.o
 	bundle exec rubocop
+	bin/unit
 	spinel granular.rb -o $@ --link $(BUILD)/granular.o --link -Wl,-framework,Security --link -Wl,-framework,CoreFoundation
 	@bin/sign $@
 	bin/ci $@
