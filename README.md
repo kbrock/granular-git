@@ -4,10 +4,28 @@ Install and uninstall: [INSTALL.md](INSTALL.md).
 Day-to-day use of each program: [USAGE.md](USAGE.md).
 Build, tests and release: [DEVELOPING.md](DEVELOPING.md).
 
-## Goal
+## Start here
 
-Grant git keys per shell or per Claude session. Claude can read from GitHub while your own terminal can push.
-You can change the grant turn by turn, so one push does not allow pushes forever.
+macOS. In your own terminal, download `granular-<version>-<arch>.tgz` from the [latest release](https://github.com/kbrock/granular-git/releases/latest), then:
+
+    sudo tar xzf granular-*.tgz -C /usr/local/bin
+    granular-audit
+
+`granular-audit` lists what is left to set up. [INSTALL.md](INSTALL.md) has the tokens, the daemon and upgrades.
+
+## Before
+
+Once you enter your GitHub or GitLab token into git, any process on your machine has full access. So Claude can push, delete, or do anything you have permission to do.
+
+## After
+
+You create two tokens, one read-only and one read-write. Your shell gets read-write, and Claude gets read-only.
+
+When you want Claude to update a PR, toggle the permission for that process. Claude can then use `git` or `gh` to write to GitHub. When you are done, toggle it off.
+
+This does not use Claude Code's permissions or LLM rules. It restricts Claude at GitHub itself, and it works in auto mode.
+
+It is a gentle guard: it limits what Claude can push when it misreads your goal. [What it does not stop](#what-it-does-not-stop) lists the gaps.
 
 ## How it decides
 
