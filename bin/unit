@@ -1,0 +1,7 @@
+#!/bin/bash
+# Usage: bin/unit [test file...]   (default test/unit/*_test.rb)
+# Unit tests under plain Ruby with G stubbed, so no build is needed.
+cd "$(dirname "$0")/.." || exit 1
+files=("$@")
+[ ${#files[@]} -gt 0 ] || files=(test/unit/*_test.rb)
+ruby -e 'ARGV.each { |f| require "./#{f}" }' "${files[@]}"

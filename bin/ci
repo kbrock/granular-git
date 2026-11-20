@@ -1,64 +1,28 @@
 #!/bin/bash
 
-# Usage: bin/ci [binary]   (default build/granular)
+# Usage: bin/ci [binary [story...]]   (default build/dev/granular, every story in test/stories)
 
-# test that a build properly handles git and gh
-# runs with daemons, with claude and without
-# if run from claude, only tests claude
-# CLAUDECODE tells us what tests to run, but doesn't affect the results
+# Runs the stories against the dev build, in parallel. Each story makes its own vault of fake tokens, socket
+# and daemon, so it runs the same under Claude as in a terminal, and one story can run alone. The
+# real-token checks are bin/smoke's.
 
 cd "$(dirname "$0")/.." || exit 1
-binary=${1:-build/granular}
+export GRANULAR_BIN=${1:-build/dev/granular}
+shift
+stories=("$@")
+[ ${#stories[@]} -gt 0 ] || stories=(test/stories/*.sh)
 
-export PATH="$(test/support/links "$binary"):$PWD:$PATH"
-
-tmp=$(mktemp -d)
-# use a socket for this process to not interfear with running system
-export GRANULAR_SOCKET=$tmp/sock
-failed=0
-
-step() {
-  local desc=$1 out
-  shift
-  if out=$("$@" 2>&1); then
-    echo "ok    $desc"
-  else
-    echo "FAIL  $desc"
-    sed 's/^/        /' <<<"$out"
-    failed=1
-  fi
-}
-
-version_matches() {
-  want=$(sed -n 's/^VERSION = "\(.*\)"/\1/p' lib/granular/config.rb)
-  [ "$(granular --version)" = "$want" ] || { echo "granular --version is not $want"; return 1; }
-}
-
-echo "==="
-step "version matches config.rb" version_matches
-step "help prints" granular --help
-echo "==="
-step "ro under claude, no daemon" test/support/claude granular-test --ro
-
-echo "==="
-if [ -n "$CLAUDECODE" ]; then
-  echo "skipped: rw and the daemon. Run bin/ci in your own terminal."
-  exit "$failed"
-fi
-
-step "rw, no daemon" granular-test --rw
-echo "==="
-granular-daemon </dev/null 2>"$tmp/daemon.log" &
-trap 'kill $! 2>/dev/null' EXIT
-for _ in $(seq 50); do
-  [ -S "$GRANULAR_SOCKET" ] && break
-  sleep 0.1
+out=$(mktemp -d)
+trap 'rm -rf "$out"' EXIT
+for story in "${stories[@]}"; do
+  "$story" >"$out/$(basename "$story").out" 2>&1 &
 done
-step "test daemon starts" test -S "$GRANULAR_SOCKET"
-step "rw, daemon" granular-test --rw
-step "ro under claude, daemon" test/support/claude granular-test --ro
-step "trust marks the parent, daemon" sh -c 'granular-trust -1 ro >/dev/null && granular-test --ro'
-step "trust refused under claude, daemon" test/support/claude sh -c '! granular-trust -1 rw'
-step "trust watch allowed under claude, daemon" test/support/claude sh -c 'granular-trust -1 >/dev/null'
-echo "==="
+wait
+
+failed=0
+for story in "${stories[@]}"; do
+  echo "== $(basename "$story")"
+  cat "$out/$(basename "$story").out"
+  grep -q '^FAIL' "$out/$(basename "$story").out" && failed=1
+done
 exit "$failed"

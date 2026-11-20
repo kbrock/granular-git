@@ -12,3 +12,8 @@ Layout/ExtraSpacing:
   AllowForAlignment: true
 Layout/HashAlignment:
   Enabled: false
+
+# The tests run under plain Ruby, not Spinel.
+Spinel/Unsupported:
+  Exclude:
+    - test/**/*
